@@ -1,6 +1,7 @@
 import random
 
 DUNGEON_SIZE = 25
+DUNGEON_SIGHT = 6
 STUP_DST = 10
 CORRIDOR_BIAS = 0.4
 CORRIDOR_CM_BIAS = (1 - CORRIDOR_BIAS) / 3
@@ -15,11 +16,12 @@ PC_CHEST = 0.05
 RM_WALL = ' # '
 RM_EMPTY = '   '
 RM_PLAYER = ' @ '
-RM_EXIT = ' ò '
+RM_EXIT = ' E '
 RM_MNST = ' m '
 RM_TRAP = ' t '
 RM_QUIZ = ' q '
 RM_CHEST = ' c '
+RM_UNKNW = ' ? '
 
 RM_KNIFE = ' k '
 RM_LOCKP = ' l '
@@ -86,13 +88,60 @@ class DungeonGraph:
     def get(self, pos):
         return self.data[pos[0]][pos[1]]
 
+    def get_nearby(self, pos):
+        nearby = []
+        x, y = pos
+        if x > 0:
+            nearby += [(x-1, y)]
+        if x < DUNGEON_SIZE - 1:
+            nearby += [(x + 1, y)]
+        if y > 0:
+            nearby += [(x, y - 1)]
+        if y < DUNGEON_SIZE - 1:
+            nearby += [(x, y + 1)]
+        return nearby
+
     def print(self):
         print(" " + "--- " * DUNGEON_SIZE)
         for i in range(0, DUNGEON_SIZE):
             for j in range(0, DUNGEON_SIZE):
-                print("|"+self.get((i, j)), end="", flush=True)
+                print("|" + self.get((i, j)), end="", flush=True)
             print("|")
-            print(" "+"--- " * DUNGEON_SIZE)
+            print(" " + "--- " * DUNGEON_SIZE)
+
+    def print_hidden(self, pos, radius, disc_set):
+        x, y = pos
+
+        if x < radius:
+            x = radius
+        elif x > DUNGEON_SIZE - radius:
+            x = DUNGEON_SIZE - radius
+
+        if y < radius:
+            y = radius
+        elif y > DUNGEON_SIZE - radius:
+            y = DUNGEON_SIZE - radius
+
+        pos = x, y
+
+        submatrix = []
+
+        for i in range(0, DUNGEON_SIZE):
+            if x - radius < i < x + radius:
+                subrow = []
+                for j in range(0, DUNGEON_SIZE):
+                    if y - radius < j < j + radius:
+                        subrow += [self.data[i][j]] if (i, j) in disc_set else [RM_UNKNW]
+                submatrix += [subrow]
+
+        size = 2 * radius - 1
+
+        print(" " + "--- " * size)
+        for i in range(0, size):
+            for j in range(0, size):
+                print("|" + submatrix[i][j], end="", flush=True)
+            print("|")
+            print(" " + "--- " * size)
 
     def drunk_path(self, start, limit):
         drunk_count = 0
@@ -177,6 +226,25 @@ class DungeonGraph:
             placed += 1
 
 
+class Player:
+    name = "???"
+    HP_MAX = 10
+    COIN_MAX = 9999
+    health = 10
+    coin = 0
+    discovered = set([])
+
+    def attacked(self, health_lost):
+        self.health = self.health - health_lost if self.health > health_lost else 0
+        return self.health != 0
+
+    def lose_coin(self, coin_lost):
+        self.coin = self.coin - coin_lost if self.coin > coin_lost else 0
+
+    def discover(self, new):
+        self.discovered = self.discovered | new
+
+
 def random_coord():
     return random.randint(1, DUNGEON_SIZE - 2), random.randint(1, DUNGEON_SIZE - 2)
 
@@ -191,9 +259,86 @@ def before(ta, tb):
     return ta[0] < tb[0] and ta[1] < tb[1]
 
 
-#######
-# CODE #
-#######
+#############
+# TEST CODE #
+#############
+"""
 dungeon = DungeonGraph(True)
 dungeon.print()
 input()
+"""
+
+dungeon = DungeonGraph(False)
+player = Player()
+
+print("Senza ricordare il perché, ti ritrovi in un luogo a te non familiare...")
+print("Qual è il tuo nome?")
+player.name = input()
+
+previous_tile = None
+next_tile = dungeon.p1
+exit_found = False
+
+while True:
+    x, y = next_tile
+
+    if previous_tile is not None:
+        dungeon.set(previous_tile, RM_EMPTY)
+
+    room = dungeon.get(next_tile)
+
+    dungeon.set(next_tile, RM_PLAYER)
+
+    newly_discovered = set([next_tile])
+
+    for near_pos in dungeon.get_nearby(next_tile):
+        next_room = dungeon.get(near_pos)
+        if next_room == RM_WALL or next_room == RM_EXIT:
+            exit_found = next_room == RM_EXIT
+            newly_discovered |= set([near_pos])
+
+    player.discover(newly_discovered)
+
+    dungeon.print_hidden(next_tile, DUNGEON_SIGHT, player.discovered)
+
+    if exit_found:
+        print("Vedi l'uscita di fronte a te!")
+        exit_found = False
+
+    if room == RM_EMPTY:
+        print("Ti immetti nel tetro corridoio...")
+    elif room == RM_MNST:
+        print("Un mostro orribile ti si para davanti!")
+    elif room == RM_EXIT:
+        break
+    else :
+        print("C'è qualcosa in questa stanza, ma non riesci a capire cosa...")
+
+    while True:
+        print("Dove desideri andare?")
+        dir = input()
+        nx, ny = x, y
+
+        if dir == 'w':
+            nx = x - 1
+        elif dir == 'a':
+            ny = y - 1
+        elif dir == 's':
+            nx = x + 1
+        elif dir == 'd':
+            ny = y + 1
+        elif dir == '':
+            print("Decidi di restare qui")
+        else:
+            print("Input non riconosciuto.")
+            continue
+        if dungeon.get((nx, ny)) == RM_WALL:
+            print("Vi è un muro in quella direzione.")
+            continue
+        break
+
+    previous_tile = next_tile
+    next_tile = nx, ny
+
+print("Riesci finalmente a vedere la luce del giorno. Congratulazioni!")
+input("Premi un tasto per uscire...")
