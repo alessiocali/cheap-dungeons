@@ -127,14 +127,14 @@ class DungeonGraph:
         submatrix = []
 
         for i in range(0, DUNGEON_SIZE):
-            if x - radius < i < x + radius:
+            if x - radius <= i < x + radius:
                 subrow = []
                 for j in range(0, DUNGEON_SIZE):
-                    if y - radius < j < j + radius:
+                    if y - radius <= j < y + radius:
                         subrow += [self.data[i][j]] if (i, j) in disc_set else [RM_UNKNW]
                 submatrix += [subrow]
 
-        size = 2 * radius - 1
+        size = len(submatrix)
 
         print(" " + "--- " * size)
         for i in range(0, size):
@@ -293,7 +293,7 @@ while True:
 
     for near_pos in dungeon.get_nearby(next_tile):
         next_room = dungeon.get(near_pos)
-        if next_room == RM_WALL or next_room == RM_EXIT:
+        if next_room == RM_WALL or next_room == RM_EXIT or next_room == RM_EMPTY:
             exit_found = next_room == RM_EXIT
             newly_discovered |= set([near_pos])
 
@@ -329,6 +329,9 @@ while True:
             ny = y + 1
         elif dir == '':
             print("Decidi di restare qui")
+        elif dir == "brighteyes":
+            dungeon.print()
+            continue
         else:
             print("Input non riconosciuto.")
             continue
