@@ -12,6 +12,7 @@ import random
 DUNGEON_SIZE = 25  # Dungeon grid size per side
 DUNGEON_SIGHT = 6  # Player is shown nearby [x - sight, x + sight] x [y - sight, y + sight] cells
 STUP_DST = 10  # The minimum distance between players and exit during setup
+STUP_TOL = 10  # The number of possible setup failures before decreasing the minimum distance.
 CORRIDOR_BIAS = 0.4  # The probability by which the drunken path will go straight
 CORRIDOR_CM_BIAS = (1 - CORRIDOR_BIAS) / 3  # Complementary corridor bias. The probability of all other sides.
 DRUNK_LIMIT = 200  # The max number of cell explorable during drunken walk
@@ -59,20 +60,36 @@ class DungeonGraph:
         self.p1 = random_coord()
         self.set(self.p1, RM_EMPTY)  # Player cell is freed. Player symbol is drawn with print functions
 
-        # Spawn random exit distant at least STUP_DST
+        min_dst = STUP_DST
+        try_count = 0
+
+        # Spawn random exit distant at least min_dst
         while True:
             self.exit = random_coord()
-            if tpl_dst(self.p1, self.exit) > STUP_DST:
+            if tpl_dst(self.p1, self.exit) > min_dst:
                 self.set(self.exit, RM_EXIT)
                 break
+            else:
+                try_count += 1
+                if try_count > STUP_TOL:    # Decrease min_dst after STUP_TOL failures
+                    min_dst = max([min_dst - 1, 1])
+                    try_count = 0
+
+        min_dst = STUP_DST
+        try_count = 0
 
         # On multiplayer mode, spawn random P2
         if multi:
             while True:
                 self.p2 = random_coord()
-                if tpl_dst(self.p1, self.p2) > STUP_DST and tpl_dst(self.exit, self.p2) > STUP_DST:
+                if tpl_dst(self.p1, self.p2) > min_dst and tpl_dst(self.exit, self.p2) > min_dst:
                     self.set(self.p2, RM_EMPTY)
                     break
+                else:
+                    try_count += 1
+                    if try_count > STUP_TOL:
+                        min_dst = max([min_dst - 1, 1])
+                        try_count = 0
 
         # Connect P1 and exit through drunken star method
         self.drunken_star(self.p1, self.exit)
@@ -184,8 +201,8 @@ class DungeonGraph:
     def get_ui_line(self, player_info):
         self.ui_counter += 1
         if self.ui_counter == 1:
-            return "\t%s\t%d/%d PV\t %d Monete" % (
-            player_info.name, player_info.health, player_info.HP_MAX, player_info.coin)
+            return "\t%s\t%d/%d PV\t %d Monete" % \
+                   (player_info.name, player_info.health, player_info.HP_MAX, player_info.coin)
         elif self.ui_counter == 2:
             return "\tOggetti"
         elif self.ui_counter == 3:
