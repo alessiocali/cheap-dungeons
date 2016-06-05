@@ -1,4 +1,5 @@
 import random
+import socket as sck
 
 #####################################################################################################################
 #       IMPORTANT NOTE                                                                                              #
@@ -168,8 +169,6 @@ class DungeonGraph:
             y = radius
         elif y > DUNGEON_SIZE - radius:
             y = DUNGEON_SIZE - radius
-
-        pos = x, y
 
         submatrix = []
 
@@ -353,63 +352,29 @@ def before(ta, tb):
     return ta[0] < tb[0] and ta[1] < tb[1]
 
 
-#############
-# TEST CODE #
-#############
-
-dungeon = DungeonGraph(False)
-player = Player()
-
-print("Senza ricordare il perché, ti ritrovi in un luogo a te non familiare...")
-print("Qual è il tuo nome?")
-player.name = input()
-
-curr_tile = dungeon.p1
-previous_tile = None
-exit_found = False
-
-while True:
-    # Fetch current room
-    room = dungeon.get(curr_tile)
+def update(curr_tile, player, dungeon):
+    new_room = dungeon.get(curr_tile)
 
     # Add nearby rooms to discovered if Wall, Empty or Exit, plus current cell in any case
     newly_discovered = set([near_pos for near_pos in dungeon.get_nearby(curr_tile) if
-                             dungeon.get(near_pos) in (RM_WALL, RM_EXIT, RM_EMPTY)] + [curr_tile])
-
+                            dungeon.get(near_pos) in (RM_WALL, RM_EXIT, RM_EMPTY)] + [curr_tile])
     player.discover(newly_discovered)
 
     # Flag exit_found if the exit is nearby
-    exit_found = dungeon.exit in newly_discovered
+    exit_nearby = dungeon.exit in newly_discovered
 
     # Print UI
     dungeon.print_hidden(curr_tile, DUNGEON_SIGHT, player)
 
-    # Handle room
-    if dungeon.p1 == dungeon.p2:
-        print("Di fronte a te si staglia uno sconosciuto...")
-    elif room == RM_EMPTY:
-        print("Ti immetti nel tetro corridoio...")
-    elif room == RM_MNST:
-        print("Un mostro orribile ti si para davanti!")
-    elif room == RM_CHEST:
-        print("Trovi una cassa del tesoro davanti a te!")
-    elif room == RM_TRAP:
-        print("Questa stanza contiene una trappola!")
-    elif room == RM_QUIZ:
-        print("Sulla parete è riportata una misteriosa incisione...")
-    elif room == RM_EXIT:
-        break
-    else:
-        print("C'è qualcosa in questa stanza, ma non riesci a capire cosa...")
+    return new_room, curr_tile, exit_nearby
 
-    # Handle exit_found
-    if exit_found:
-        print("Vedi l'uscita di fronte a te!")
-        exit_found = False
 
-    # Handle input
+def move(curr_tile, socket, dungeon):
+    x, y, nx, ny = None, None, None, None
+
     while True:
         print("Dove desideri andare?")
+
         pl_input = input()
         x, y = curr_tile
         nx, ny = x, y
@@ -425,8 +390,10 @@ while True:
         elif pl_input == '':
             print("Decidi di restare qui")
         elif pl_input == "esci":
+            if socket is not None:
+                socket.close()
             exit()
-        elif pl_input == "brighteyes":
+        elif pl_input == "brighteyes":  # Cheat for printing the whole map
             dungeon.print()
             continue
         else:
@@ -441,9 +408,119 @@ while True:
             continue
         break
 
-    previous_tile = curr_tile
-    curr_tile = nx, ny
-    dungeon.p1 = curr_tile
+    return curr_tile, (nx, ny)
 
-print("Riesci finalmente a vedere la luce del giorno. Congratulazioni!")
-input("Premi un tasto per uscire...")
+
+def play():
+    print("Vuoi giocare in solo o con un amico? s/a")
+    multi = input() == "a"
+
+    dungeon = DungeonGraph(multi)
+    player = Player()
+
+    print("Senza ricordare il perché, ti ritrovi in un luogo a te non familiare...")
+    print("Qual è il tuo nome?")
+
+    player.name = input()
+    conn = None
+    curr_tile = dungeon.p1
+
+    if multi:
+        print("Desideri iniziare una nuova partita o connetterti ad una già esistente? n/c")
+        type_mod = input()
+
+        if type_mod == "c":
+            conn = sck.socket()
+            conn.connect(("localhost", 12345))
+            msg = "DUNGEON"
+
+            for i in range(DUNGEON_SIZE):
+                for j in range(DUNGEON_SIZE):
+                    conn.sendall(msg.encode())
+                    dungeon.set((i, j), conn.recv(1024).decode())
+
+            # Receive P1 and P2
+            pos_string = conn.recv(1024).decode()
+            pos_p1 = pos_string.split(',')
+
+            conn.sendall(msg.encode())
+            pos_string = conn.recv(1024).decode()
+            pos_p2 = pos_string.split(',')
+
+            dungeon.p2 = int(pos_p1[0]), int(pos_p1[1])  # Positions are swapped because this is the second player
+            dungeon.p1 = int(pos_p2[0]), int(pos_p2[1])
+
+            curr_tile = dungeon.p1
+
+        else:
+            c = sck.socket()  # Connection setup
+            c.bind(("localhost", 12345))
+            c.listen()
+            conn, _ = c.accept()
+            c.close()
+
+            for i in range(DUNGEON_SIZE):
+                for j in range(DUNGEON_SIZE):
+                    msg = conn.recv(1024).decode()
+                    if msg == "DUNGEON":
+                        conn.sendall(dungeon.get((i, j)).encode())
+
+            pos_string_p1 = str(dungeon.p1[0]) + ',' + str(dungeon.p1[1])
+            pos_string_p2 = str(dungeon.p2[0]) + ',' + str(dungeon.p2[1])
+
+            conn.sendall(pos_string_p1.encode())
+            err = conn.recv(1024).decode()
+
+            if err == "DUNGEON":
+                conn.sendall(pos_string_p2.encode())
+
+            curr_tile = dungeon.p1
+
+    while True:
+        room, curr_tile, exit_found = update(curr_tile, player, dungeon)
+
+        if dungeon.p1 == dungeon.p2:
+            print("Di fronte a te si staglia uno sconosciuto...")
+        elif room == RM_EMPTY:
+            print("Ti immetti nel tetro corridoio...")
+        elif room == RM_MNST:
+            print("Un mostro orribile ti si para davanti!")
+        elif room == RM_CHEST:
+            print("Trovi una cassa del tesoro davanti a te!")
+        elif room == RM_TRAP:
+            print("Questa stanza contiene una trappola!")
+        elif room == RM_QUIZ:
+            print("Sulla parete è riportata una misteriosa incisione...")
+        elif room == RM_EXIT:
+            break
+        else:
+            print("C'è qualcosa in questa stanza, ma non riesci a capire cosa...")
+        if exit_found:
+            print("Vedi l'uscita di fronte a te!")
+
+        previous_tile, curr_tile = move(curr_tile, conn, dungeon)
+        dungeon.p1 = curr_tile
+
+        if multi:
+            # Sending my position
+            pos_string = str(dungeon.p1[0]) + ',' + str(dungeon.p1[1])
+            conn.sendall(pos_string.encode())
+
+            # Receiving opponent position
+            print("Attendi la mossa del tuo avversario...")
+            pos_string = conn.recv(1024).decode()
+            pos = pos_string.split(',')
+            dungeon.p2 = int(pos[0]), int(pos[1])
+
+    if conn is not None:
+        conn.close()
+
+    print("Riesci finalmente a vedere la luce del giorno. Congratulazioni!")
+    input("Premi un tasto per uscire...")
+
+
+#############
+#    RUN    #
+#############
+
+play()
