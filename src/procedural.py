@@ -183,8 +183,8 @@ class DungeonGraph:
     def get_ui_line(self, player_info):
         self.ui_counter += 1
         if self.ui_counter == 1:
-            return "\t%s\t%d/%d PV\t %d Monete" % (
-                player_info.name, player_info.health, player_info.HP_MAX, player_info.coin)
+            return "\t%s\t%d/%d PV\t %d Monete" % \
+                (player_info.name, player_info.health, player_info.HP_MAX, player_info.coin)
         elif self.ui_counter == 2:
             return "\tOggetti"
         elif self.ui_counter == 3:
