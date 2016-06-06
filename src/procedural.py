@@ -431,9 +431,9 @@ def play():
         type_mod = input()
 
         if type_mod == "c":
-            conn = sck.socket()
+            conn = sck.socket(sck.AF_INET, sck.SOCK_STREAM)
             print("Immetti l'indirizzo ip del tuo avversario")
-            ip_player=input()
+            ip_player = input()
             conn.connect((ip_player, MULTI_PORT))
             msg = "DUNGEON"
 
@@ -456,7 +456,7 @@ def play():
             curr_tile = dungeon.p1
 
         else:
-            c = sck.socket()  # Connection setup
+            c = sck.socket(sck.AF_INET, sck.SOCK_STREAM)  # Connection setup
             c.bind(("", MULTI_PORT))
             c.listen()
             conn, _ = c.accept()
