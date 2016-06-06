@@ -10,6 +10,7 @@ import socket as sck
 #   and then its subsequent elements). Deal with it.                                                                #
 #####################################################################################################################
 
+MULTI_PORT = 8390
 DUNGEON_SIZE = 25  # Dungeon grid size per side
 DUNGEON_SIGHT = 6  # Player is shown nearby [x - sight, x + sight] x [y - sight, y + sight] cells
 STUP_DST = 10  # The minimum distance between players and exit during setup
@@ -433,7 +434,7 @@ def play():
             conn = sck.socket()
             print("Immetti l'indirizzo ip del tuo avversario")
             ip_player=input()
-            conn.connect((ip_player, 12345))
+            conn.connect((ip_player, MULTI_PORT))
             msg = "DUNGEON"
 
             for i in range(DUNGEON_SIZE):
@@ -456,7 +457,7 @@ def play():
 
         else:
             c = sck.socket()  # Connection setup
-            c.bind(("localhost", 12345))
+            c.bind(("", MULTI_PORT))
             c.listen()
             conn, _ = c.accept()
             c.close()
