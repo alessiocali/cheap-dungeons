@@ -431,7 +431,9 @@ def play():
 
         if type_mod == "c":
             conn = sck.socket()
-            conn.connect(("localhost", 12345))
+            print("Immetti l'indirizzo ip del tuo avversario")
+            ip_player=input()
+            conn.connect((ip_player, 12345))
             msg = "DUNGEON"
 
             for i in range(DUNGEON_SIZE):
