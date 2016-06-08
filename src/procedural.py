@@ -40,7 +40,10 @@ RM_LOCKP = ' l '
 RM_COMP = ' C '
 RM_SWRD = ' s '
 
-
+MSG_DIE = "DEAD"
+MSG_ESC= "ESCAPE"
+MSG_CLR= "CLEAR"
+MSG_POS= "POS"
 # Dungeon data
 class DungeonGraph:
     data = []  # The actual grid
@@ -332,7 +335,6 @@ class Player:
 
     def lose_coin(self, coin_lost):
         self.coin = self.coin - coin_lost if self.coin > coin_lost else 0
-
     def discover(self, new):
         self.discovered |= new
 
@@ -481,7 +483,7 @@ def play():
 
     while True:
         room, curr_tile, exit_found = update(curr_tile, player, dungeon)
-
+        Buff = []
         if dungeon.p1 == dungeon.p2:
             print("Di fronte a te si staglia uno sconosciuto...")
         elif room == RM_EMPTY:
@@ -495,25 +497,45 @@ def play():
         elif room == RM_QUIZ:
             print("Sulla parete è riportata una misteriosa incisione...")
         elif room == RM_EXIT:
+            Buff.append(MSG_ESC)
             break
         else:
             print("C'è qualcosa in questa stanza, ma non riesci a capire cosa...")
         if exit_found:
             print("Vedi l'uscita di fronte a te!")
 
+        if player.attacked(0)==True:
+            Buff.append(MSG_DIE)
+
+
+        conn.sendall(Buff.encode())
         previous_tile, curr_tile = move(curr_tile, conn, dungeon)
         dungeon.p1 = curr_tile
 
         if multi:
             # Sending my position
-            pos_string = str(dungeon.p1[0]) + ',' + str(dungeon.p1[1])
-            conn.sendall(pos_string.encode())
+            Buff.append(MSG_POS + " " + str(dungeon.p1[0]) + " " + str(dungeon.p1[1]))
+            msg = ""
+            for str in Buff:
+                msg+= str + " "
+            conn.sendall(msg.encode())
 
             # Receiving opponent position
             print("Attendi la mossa del tuo avversario...")
-            pos_string = conn.recv(1024).decode()
-            pos = pos_string.split(',')
-            dungeon.p2 = int(pos[0]), int(pos[1])
+            msg = conn.recv(1024).decode()
+            msg = msg.split(' ')
+
+            for i in range(len(msg)):
+                if msg[i]==MSG_POS :
+                    pos=[]
+                    dungeon.p2 = int(msg[i+1]), int(pos[1])
+                elif msg[i]==MSG_ESC:
+                    print("ciao")
+
+                elif msg[i]==MSG_DIE:
+                    conn.close();
+                    multi=None;
+
 
     if conn is not None:
         conn.close()
