@@ -10,6 +10,7 @@ import socket as sck
 #   and then its subsequent elements). Deal with it.                                                                #
 #####################################################################################################################
 
+MULTI_PORT = 8390
 DUNGEON_SIZE = 25  # Dungeon grid size per side
 DUNGEON_SIGHT = 6  # Player is shown nearby [x - sight, x + sight] x [y - sight, y + sight] cells
 STUP_DST = 10  # The minimum distance between players and exit during setup
@@ -24,20 +25,20 @@ PC_TRAP = 0.05  # Percentage of traps
 PC_QUIZ = 0.025  # Percentage of traps
 PC_CHEST = 0.05  # Percentage of chests
 
-RM_WALL = ' # '  # All the map symbols
-RM_EMPTY = '   '
-RM_PLAYER = ' @ '
-RM_EXIT = ' E '
-RM_MNST = ' m '
-RM_TRAP = ' t '
-RM_QUIZ = ' q '
-RM_CHEST = ' c '
-RM_UNKNW = ' ? '
+RM_WALL = '#'  # All the map symbols
+RM_EMPTY = ' '
+RM_PLAYER = '@'
+RM_EXIT = 'E'
+RM_MNST = 'm'
+RM_TRAP = 't'
+RM_QUIZ = 'q'
+RM_CHEST = 'c'
+RM_UNKNW = '?'
 
-RM_KNIFE = ' k '
-RM_LOCKP = ' l '
-RM_COMP = ' C '
-RM_SWRD = ' s '
+RM_KNIFE = 'k'
+RM_LOCKP = 'l'
+RM_COMP = 'C'
+RM_SWRD = 's'
 
 
 # Dungeon data
@@ -151,7 +152,7 @@ class DungeonGraph:
             for j in range(0, DUNGEON_SIZE):
                 # If the (i, j) couple matches P1 or P2 print the Player symbol instead
                 symbol = RM_PLAYER if (i, j) in (self.p1, self.p2) else self.get((i, j))
-                print("|" + symbol, end="", flush=True)
+                print("| " + symbol + " ", end="", flush=True)
             print("|")  # Termination bar
             print(" " + "--- " * DUNGEON_SIZE)  # Bottom rule
 
@@ -190,7 +191,7 @@ class DungeonGraph:
         print(" " + "--- " * size)
         for i in range(0, size):
             for j in range(0, size):
-                print("|" + submatrix[i][j], end="", flush=True)
+                print("| " + submatrix[i][j] + " ", end="", flush=True)
             print("|" + self.get_ui_line(player_info))
             print(" " + "--- " * size)
 
@@ -418,10 +419,6 @@ def play():
     dungeon = DungeonGraph(multi)
     player = Player()
 
-    print("Senza ricordare il perché, ti ritrovi in un luogo a te non familiare...")
-    print("Qual è il tuo nome?")
-
-    player.name = input()
     conn = None
     curr_tile = dungeon.p1
 
@@ -430,14 +427,25 @@ def play():
         type_mod = input()
 
         if type_mod == "c":
-            conn = sck.socket()
-            conn.connect(("localhost", 12345))
+            conn = sck.socket(sck.AF_INET, sck.SOCK_STREAM)
+            print("Immetti l'indirizzo ip del tuo avversario (assicurati che il tuo avversario sia in attesa)")
+            ip_player = input()
+            print("In attesa dell'avversario...")
+
+            try:
+                conn.connect((ip_player, MULTI_PORT))
+            except ConnectionRefusedError:
+                print("Indirizzo IP non valido oppure l'avversario non ha iniziato una partita")
+                exit()
+
             msg = "DUNGEON"
 
-            for i in range(DUNGEON_SIZE):
-                for j in range(DUNGEON_SIZE):
-                    conn.sendall(msg.encode())
-                    dungeon.set((i, j), conn.recv(1024).decode())
+            for i in range(DUNGEON_SIZE):   # Receive map row by row
+                conn.sendall(msg.encode())
+                dungeon.data[i] = list(conn.recv(1024).decode())
+                print("Ricezione mappa : " + str(float(i) / DUNGEON_SIZE * 100) + "%                ", end='\r')
+
+            print("Riceziona mappa completata")
 
             # Receive P1 and P2
             pos_string = conn.recv(1024).decode()
@@ -453,17 +461,20 @@ def play():
             curr_tile = dungeon.p1
 
         else:
-            c = sck.socket()  # Connection setup
-            c.bind(("localhost", 12345))
+            print("In attesa dell'avversario...")
+            c = sck.socket(sck.AF_INET, sck.SOCK_STREAM)  # Connection setup
+            c.bind(("", MULTI_PORT))
             c.listen()
             conn, _ = c.accept()
             c.close()
 
-            for i in range(DUNGEON_SIZE):
-                for j in range(DUNGEON_SIZE):
-                    msg = conn.recv(1024).decode()
-                    if msg == "DUNGEON":
-                        conn.sendall(dungeon.get((i, j)).encode())
+            for i in range(DUNGEON_SIZE):   # Send map row by row
+                msg = conn.recv(1024).decode()
+                if msg == "DUNGEON":
+                    conn.sendall(''.join(dungeon.data[i]).encode())
+                    print("Invio mappa : " + str(float(i) / DUNGEON_SIZE * 100) + "%                  ", end='\r')
+
+            print("Invio mappa completato")
 
             pos_string_p1 = str(dungeon.p1[0]) + ',' + str(dungeon.p1[1])
             pos_string_p2 = str(dungeon.p2[0]) + ',' + str(dungeon.p2[1])
@@ -475,6 +486,11 @@ def play():
                 conn.sendall(pos_string_p2.encode())
 
             curr_tile = dungeon.p1
+
+    print("Senza ricordare il perché, ti ritrovi in un luogo a te non familiare...")
+    print("Qual è il tuo nome?")
+
+    player.name = input()
 
     while True:
         room, curr_tile, exit_found = update(curr_tile, player, dungeon)
