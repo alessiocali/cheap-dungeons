@@ -28,6 +28,7 @@ PC_CHEST = 0.05  # Percentage of chests
 RM_WALL = '#'  # All the map symbols
 RM_EMPTY = ' '
 RM_PLAYER = '@'
+RM_PLAYER2 = '$'
 RM_EXIT = 'E'
 RM_MNST = 'm'
 RM_TRAP = 't'
@@ -151,7 +152,7 @@ class DungeonGraph:
         for i in range(0, DUNGEON_SIZE):
             for j in range(0, DUNGEON_SIZE):
                 # If the (i, j) couple matches P1 or P2 print the Player symbol instead
-                symbol = RM_PLAYER if (i, j) in (self.p1, self.p2) else self.get((i, j))
+                symbol = RM_PLAYER if (i, j) == self.p1 else RM_PLAYER2 if (i, j) == self.p2 else self.get((i, j))
                 print("| " + symbol + " ", end="", flush=True)
             print("|")  # Termination bar
             print(" " + "--- " * DUNGEON_SIZE)  # Bottom rule
@@ -181,8 +182,11 @@ class DungeonGraph:
                 for j in range(0, DUNGEON_SIZE):
                     if y - radius <= j < y + radius:
                         # Hide elements unknown to the player; substitute player position symbol with RM_PLAYER
-                        subrow += [RM_PLAYER] if (i, j) in (self.p1, self.p2) \
-                            else [self.data[i][j]] if (i, j) in player_info.discovered else [RM_UNKNW]
+                        subrow += [RM_PLAYER] if (i, j) == self.p1 \
+                            else [RM_PLAYER2] if (i, j) == self.p2 and (i, j) in player_info.discovered \
+                            else [self.data[i][j]] if (i, j) in player_info.discovered \
+                            else [RM_UNKNW]
+
                 submatrix += [subrow]
 
         size = len(submatrix)
