@@ -501,10 +501,15 @@ def play():
 
     player.name = input()
     dieprint = "" # stampa scritta morto
+    escprint=""
+    player_escape = False;
+    wait_player=False;
     while True:
         room, curr_tile, exit_found = update(curr_tile, player, dungeon)
         Buff=[]
         print(dieprint)
+        print(escprint)
+        escprint=""
         dieprint=""
         if dungeon.p1 == dungeon.p2:
             print("Di fronte a te si staglia uno sconosciuto...")
@@ -520,12 +525,23 @@ def play():
             print("Sulla parete è riportata una misteriosa incisione...")
         elif room == RM_EXIT:
             Buff.append(MSG_ESC)
-            break
+            print("Congratulazioni sei riuscito a scappare")
+            if wait_player ==False: #se è il primo giocatore ad uscire
+                wait_player=True
+                break
+            else: 
+                print("Sei fuggito in tempo")    #secondo giocatore ad uscire
+                second_player_esc = "escape"
+                conn.sendall(second_player_esc.encode())
+                conn.close();
+                break    
         else:
             print("C'è qualcosa in questa stanza, ma non riesci a capire cosa...")
         if exit_found:
             print("Vedi l'uscita di fronte a te!")
-
+        if wait_player==True:    # primo giocatore aspetta
+            print("aspetta l'esito della partita")
+            esito = conn.recv(1024).decode()
 
         previous_tile, curr_tile = move(curr_tile, conn, dungeon,player)
         dungeon.p1 = curr_tile
@@ -539,7 +555,6 @@ def play():
             # Sending my position
             Buff.append(MSG_POS + " " + str(dungeon.p1[0]) + " " + str(dungeon.p1[1]))
             msg = ""
-            print(Buff)
             for strs in Buff:
                 msg += strs + " "
             conn.sendall(msg.encode())
@@ -555,17 +570,27 @@ def play():
                     pos = []
                     dungeon.p2 = int(msg[i + 1]), int(msg[i+2])
                 elif msg[i] == MSG_ESC:
-                    MOVS_TO_ESC+1
-
+                       player_escape=True;  #primo giocatore è scappato
+                       break;
                 elif msg[i] == MSG_DIE:
                     dieprint= "Le urla strazianti di un altro avventuriero giungono alle tue orecchie"
                     dungeon.p2 =int(msg[i + 1]), int(msg[i+2])
-                    dungeon.set(dungeon.p2, RM_EMPTY) # non lo cancella...
+                    dungeon.p2=None
                     conn.close();
                     multi = None;
+                    break
+            if player_escape == True and (MOVS_TO_ESC<10):  #secondo giocatore ha 10 mosse
+                    MOVS_TO_ESC + 1
+                    escprint="L'altro giocatore è riuscito a scappare, ti rimangono "+ str(MOVS_TO_ESC)+"mosse da fare"
+            else:
+              timeout_moves="timeout"   # timeout 10 mosse
+              conn.sendall(timeout_moves.encode())
+              conn.close();
+              print("Non hai fatto in tempo")
+
     if conn is not None:
         conn.close()
-    if player.attacked(0) != 0:
+    if player.attacked(0) != 0 :
         print("Riesci finalmente a vedere la luce del giorno. Congratulazioni!")
     input("Premi un tasto per uscire...")
 
