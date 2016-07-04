@@ -44,7 +44,7 @@ MSG_DIE = "DEAD"
 MSG_ESC= "ESCAPE"
 MSG_CLR= "CLEAR"
 MSG_POS= "POS"
-
+MOVS_TO_ESC=0
 # Dungeon data
 class DungeonGraph:
     data = []  # The actual grid
@@ -373,11 +373,10 @@ def update(curr_tile, player, dungeon):
 
     # Print UI
     dungeon.print_hidden(curr_tile, DUNGEON_SIGHT, player)
-
     return new_room, curr_tile, exit_nearby
 
 
-def move(curr_tile, socket, dungeon):
+def move(curr_tile, socket, dungeon,player):
     x, y, nx, ny = None, None, None, None
 
     while True:
@@ -403,6 +402,9 @@ def move(curr_tile, socket, dungeon):
             exit()
         elif pl_input == "brighteyes":  # Cheat for printing the whole map
             dungeon.print()
+            continue
+        elif pl_input == "kill":  # Cheat for suicide
+            player.attacked(10)
             continue
         else:
             print("Input non riconosciuto.")
@@ -498,10 +500,12 @@ def play():
     print("Qual è il tuo nome?")
 
     player.name = input()
-
+    dieprint = "" # stampa scritta morto
     while True:
         room, curr_tile, exit_found = update(curr_tile, player, dungeon)
         Buff=[]
+        print(dieprint)
+        dieprint=""
         if dungeon.p1 == dungeon.p2:
             print("Di fronte a te si staglia uno sconosciuto...")
         elif room == RM_EMPTY:
@@ -522,40 +526,47 @@ def play():
         if exit_found:
             print("Vedi l'uscita di fronte a te!")
 
-        if player.attacked(0) == 0:
-            Buff.append(MSG_DIE)
 
-        previous_tile, curr_tile = move(curr_tile, conn, dungeon)
+        previous_tile, curr_tile = move(curr_tile, conn, dungeon,player)
         dungeon.p1 = curr_tile
+        if player.attacked(0) == 0:
+            Buff.append(MSG_DIE + " " + str(dungeon.p1[0]) + " " + str(dungeon.p1[1]))
+            print("Sei morto")
+            if (multi == False):
+                break
 
         if multi:
             # Sending my position
             Buff.append(MSG_POS + " " + str(dungeon.p1[0]) + " " + str(dungeon.p1[1]))
             msg = ""
+            print(Buff)
             for strs in Buff:
                 msg += strs + " "
             conn.sendall(msg.encode())
 
+            if player.attacked(0) == 0:
+                break
             # Receiving opponent position
             print("Attendi la mossa del tuo avversario...")
             msg = conn.recv(1024).decode()
             msg = msg.split(' ')
-
             for i in range(len(msg)):
                 if msg[i] == MSG_POS:
                     pos = []
                     dungeon.p2 = int(msg[i + 1]), int(msg[i+2])
                 elif msg[i] == MSG_ESC:
-                    print("ciao") # to do
+                    MOVS_TO_ESC+1
 
                 elif msg[i] == MSG_DIE:
+                    dieprint= "Le urla strazianti di un altro avventuriero giungono alle tue orecchie"
+                    dungeon.p2 =int(msg[i + 1]), int(msg[i+2])
+                    dungeon.set(dungeon.p2, RM_EMPTY) # non lo cancella...
                     conn.close();
                     multi = None;
-
     if conn is not None:
         conn.close()
-
-    print("Riesci finalmente a vedere la luce del giorno. Congratulazioni!")
+    if player.attacked(0) != 0:
+        print("Riesci finalmente a vedere la luce del giorno. Congratulazioni!")
     input("Premi un tasto per uscire...")
 
 
