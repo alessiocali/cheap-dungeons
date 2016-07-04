@@ -25,25 +25,26 @@ PC_TRAP = 0.05  # Percentage of traps
 PC_QUIZ = 0.025  # Percentage of traps
 PC_CHEST = 0.05  # Percentage of chests
 
-RM_WALL = ' # '  # All the map symbols
-RM_EMPTY = '   '
-RM_PLAYER = ' @ '
-RM_EXIT = ' E '
-RM_MNST = ' m '
-RM_TRAP = ' t '
-RM_QUIZ = ' q '
-RM_CHEST = ' c '
-RM_UNKNW = ' ? '
+RM_WALL = '#'  # All the map symbols
+RM_EMPTY = ' '
+RM_PLAYER = '@'
+RM_PLAYER2 = '$'
+RM_EXIT = 'E'
+RM_MNST = 'm'
+RM_TRAP = 't'
+RM_QUIZ = 'q'
+RM_CHEST = 'c'
+RM_UNKNW = '?'
 
-RM_KNIFE = ' k '
-RM_LOCKP = ' l '
-RM_COMP = ' C '
-RM_SWRD = ' s '
-
+RM_KNIFE = 'k'
+RM_LOCKP = 'l'
+RM_COMP = 'C'
+RM_SWRD = 's'
 MSG_DIE = "DEAD"
 MSG_ESC= "ESCAPE"
 MSG_CLR= "CLEAR"
 MSG_POS= "POS"
+
 # Dungeon data
 class DungeonGraph:
     data = []  # The actual grid
@@ -154,8 +155,8 @@ class DungeonGraph:
         for i in range(0, DUNGEON_SIZE):
             for j in range(0, DUNGEON_SIZE):
                 # If the (i, j) couple matches P1 or P2 print the Player symbol instead
-                symbol = RM_PLAYER if (i, j) in (self.p1, self.p2) else self.get((i, j))
-                print("|" + symbol, end="", flush=True)
+                symbol = RM_PLAYER if (i, j) == self.p1 else RM_PLAYER2 if (i, j) == self.p2 else self.get((i, j))
+                print("| " + symbol + " ", end="", flush=True)
             print("|")  # Termination bar
             print(" " + "--- " * DUNGEON_SIZE)  # Bottom rule
 
@@ -184,8 +185,11 @@ class DungeonGraph:
                 for j in range(0, DUNGEON_SIZE):
                     if y - radius <= j < y + radius:
                         # Hide elements unknown to the player; substitute player position symbol with RM_PLAYER
-                        subrow += [RM_PLAYER] if (i, j) in (self.p1, self.p2) \
-                            else [self.data[i][j]] if (i, j) in player_info.discovered else [RM_UNKNW]
+                        subrow += [RM_PLAYER] if (i, j) == self.p1 \
+                            else [RM_PLAYER2] if (i, j) == self.p2 and (i, j) in player_info.discovered \
+                            else [self.data[i][j]] if (i, j) in player_info.discovered \
+                            else [RM_UNKNW]
+
                 submatrix += [subrow]
 
         size = len(submatrix)
@@ -194,7 +198,7 @@ class DungeonGraph:
         print(" " + "--- " * size)
         for i in range(0, size):
             for j in range(0, size):
-                print("|" + submatrix[i][j], end="", flush=True)
+                print("| " + submatrix[i][j] + " ", end="", flush=True)
             print("|" + self.get_ui_line(player_info))
             print(" " + "--- " * size)
 
@@ -335,6 +339,7 @@ class Player:
 
     def lose_coin(self, coin_lost):
         self.coin = self.coin - coin_lost if self.coin > coin_lost else 0
+
     def discover(self, new):
         self.discovered |= new
 
@@ -421,10 +426,6 @@ def play():
     dungeon = DungeonGraph(multi)
     player = Player()
 
-    print("Senza ricordare il perché, ti ritrovi in un luogo a te non familiare...")
-    print("Qual è il tuo nome?")
-
-    player.name = input()
     conn = None
     curr_tile = dungeon.p1
 
@@ -434,15 +435,24 @@ def play():
 
         if type_mod == "c":
             conn = sck.socket(sck.AF_INET, sck.SOCK_STREAM)
-            print("Immetti l'indirizzo ip del tuo avversario")
+            print("Immetti l'indirizzo ip del tuo avversario (assicurati che il tuo avversario sia in attesa)")
             ip_player = input()
-            conn.connect((ip_player, MULTI_PORT))
+            print("In attesa dell'avversario...")
+
+            try:
+                conn.connect((ip_player, MULTI_PORT))
+            except ConnectionRefusedError:
+                print("Indirizzo IP non valido oppure l'avversario non ha iniziato una partita")
+                exit()
+
             msg = "DUNGEON"
 
-            for i in range(DUNGEON_SIZE):
-                for j in range(DUNGEON_SIZE):
-                    conn.sendall(msg.encode())
-                    dungeon.set((i, j), conn.recv(1024).decode())
+            for i in range(DUNGEON_SIZE):   # Receive map row by row
+                conn.sendall(msg.encode())
+                dungeon.data[i] = list(conn.recv(1024).decode())
+                print("Ricezione mappa : " + str(float(i) / DUNGEON_SIZE * 100) + "%                ", end='\r')
+
+            print("Riceziona mappa completata")
 
             # Receive P1 and P2
             pos_string = conn.recv(1024).decode()
@@ -458,17 +468,20 @@ def play():
             curr_tile = dungeon.p1
 
         else:
+            print("In attesa dell'avversario...")
             c = sck.socket(sck.AF_INET, sck.SOCK_STREAM)  # Connection setup
             c.bind(("", MULTI_PORT))
             c.listen()
             conn, _ = c.accept()
             c.close()
 
-            for i in range(DUNGEON_SIZE):
-                for j in range(DUNGEON_SIZE):
-                    msg = conn.recv(1024).decode()
-                    if msg == "DUNGEON":
-                        conn.sendall(dungeon.get((i, j)).encode())
+            for i in range(DUNGEON_SIZE):   # Send map row by row
+                msg = conn.recv(1024).decode()
+                if msg == "DUNGEON":
+                    conn.sendall(''.join(dungeon.data[i]).encode())
+                    print("Invio mappa : " + str(float(i) / DUNGEON_SIZE * 100) + "%                  ", end='\r')
+
+            print("Invio mappa completato")
 
             pos_string_p1 = str(dungeon.p1[0]) + ',' + str(dungeon.p1[1])
             pos_string_p2 = str(dungeon.p2[0]) + ',' + str(dungeon.p2[1])
@@ -481,9 +494,14 @@ def play():
 
             curr_tile = dungeon.p1
 
+    print("Senza ricordare il perché, ti ritrovi in un luogo a te non familiare...")
+    print("Qual è il tuo nome?")
+
+    player.name = input()
+
     while True:
         room, curr_tile, exit_found = update(curr_tile, player, dungeon)
-        Buff = []
+        Buff=[]
         if dungeon.p1 == dungeon.p2:
             print("Di fronte a te si staglia uno sconosciuto...")
         elif room == RM_EMPTY:
@@ -504,11 +522,9 @@ def play():
         if exit_found:
             print("Vedi l'uscita di fronte a te!")
 
-        if player.attacked(0)==True:
+        if player.attacked(0) == 0:
             Buff.append(MSG_DIE)
 
-
-        conn.sendall(Buff.encode())
         previous_tile, curr_tile = move(curr_tile, conn, dungeon)
         dungeon.p1 = curr_tile
 
@@ -516,8 +532,8 @@ def play():
             # Sending my position
             Buff.append(MSG_POS + " " + str(dungeon.p1[0]) + " " + str(dungeon.p1[1]))
             msg = ""
-            for str in Buff:
-                msg+= str + " "
+            for strs in Buff:
+                msg += strs + " "
             conn.sendall(msg.encode())
 
             # Receiving opponent position
@@ -526,16 +542,15 @@ def play():
             msg = msg.split(' ')
 
             for i in range(len(msg)):
-                if msg[i]==MSG_POS :
-                    pos=[]
-                    dungeon.p2 = int(msg[i+1]), int(pos[1])
-                elif msg[i]==MSG_ESC:
-                    print("ciao")
+                if msg[i] == MSG_POS:
+                    pos = []
+                    dungeon.p2 = int(msg[i + 1]), int(msg[i+2])
+                elif msg[i] == MSG_ESC:
+                    print("ciao") # to do
 
-                elif msg[i]==MSG_DIE:
+                elif msg[i] == MSG_DIE:
                     conn.close();
-                    multi=None;
-
+                    multi = None;
 
     if conn is not None:
         conn.close()
