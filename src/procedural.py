@@ -406,6 +406,9 @@ def move(curr_tile, socket, dungeon,player):
         elif pl_input == "kill":  # Cheat for suicide
             player.attacked(10)
             continue
+        elif pl_input == "exit":  # Cheat for exit
+            dungeon.set(dungeon.p1,RM_EXIT)
+            continue
         else:
             print("Input non riconosciuto.")
             continue
@@ -528,23 +531,26 @@ def play():
             print("Congratulazioni sei riuscito a scappare")
             if wait_player ==False: #se è il primo giocatore ad uscire
                 wait_player=True
-                break
-            else: 
+            else:
                 print("Sei fuggito in tempo")    #secondo giocatore ad uscire
                 second_player_esc = "escape"
                 conn.sendall(second_player_esc.encode())
                 conn.close();
-                break    
+                break
         else:
             print("C'è qualcosa in questa stanza, ma non riesci a capire cosa...")
         if exit_found:
             print("Vedi l'uscita di fronte a te!")
         if wait_player==True:    # primo giocatore aspetta
             print("aspetta l'esito della partita")
-            esito = conn.recv(1024).decode()
-
+            while(True):
+                esito = conn.recv(1024).decode()
+                if esito=="escape" or esito=="timeout":
+                    break
+        print(Buff)
         previous_tile, curr_tile = move(curr_tile, conn, dungeon,player)
         dungeon.p1 = curr_tile
+
         if player.attacked(0) == 0:
             Buff.append(MSG_DIE + " " + str(dungeon.p1[0]) + " " + str(dungeon.p1[1]))
             print("Sei morto")
@@ -554,6 +560,7 @@ def play():
         if multi:
             # Sending my position
             Buff.append(MSG_POS + " " + str(dungeon.p1[0]) + " " + str(dungeon.p1[1]))
+            print(Buff)
             msg = ""
             for strs in Buff:
                 msg += strs + " "
@@ -564,6 +571,7 @@ def play():
             # Receiving opponent position
             print("Attendi la mossa del tuo avversario...")
             msg = conn.recv(1024).decode()
+            print(msg)
             msg = msg.split(' ')
             for i in range(len(msg)):
                 if msg[i] == MSG_POS:
@@ -582,10 +590,11 @@ def play():
             if player_escape == True and (MOVS_TO_ESC<10):  #secondo giocatore ha 10 mosse
                     MOVS_TO_ESC + 1
                     escprint="L'altro giocatore è riuscito a scappare, ti rimangono "+ str(MOVS_TO_ESC)+"mosse da fare"
-            else:
+            if MOVS_TO_ESC==10 :
               timeout_moves="timeout"   # timeout 10 mosse
               conn.sendall(timeout_moves.encode())
               conn.close();
+              multi = None;
               print("Non hai fatto in tempo")
 
     if conn is not None:
