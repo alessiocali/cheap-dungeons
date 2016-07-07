@@ -44,7 +44,6 @@ MSG_DIE = "DEAD"
 MSG_ESC= "ESCAPE"
 MSG_CLR= "CLEAR"
 MSG_POS= "POS"
-MOVS_TO_ESC=0
 # Dungeon data
 class DungeonGraph:
     data = []  # The actual grid
@@ -507,6 +506,7 @@ def play():
     escprint=""
     player_escape = False;
     wait_player=False;
+    MOVS_TO_ESC = 0
     while True:
         room, curr_tile, exit_found = update(curr_tile, player, dungeon)
         Buff=[]
@@ -527,7 +527,6 @@ def play():
         elif room == RM_QUIZ:
             print("Sulla parete è riportata una misteriosa incisione...")
         elif room == RM_EXIT:
-            Buff.append(MSG_ESC)
             print("Congratulazioni sei riuscito a scappare")
             if wait_player ==False: #se è il primo giocatore ad uscire
                 wait_player=True
@@ -547,10 +546,10 @@ def play():
                 esito = conn.recv(1024).decode()
                 if esito=="escape" or esito=="timeout":
                     break
-        print(Buff)
         previous_tile, curr_tile = move(curr_tile, conn, dungeon,player)
         dungeon.p1 = curr_tile
-
+        if (dungeon.get(dungeon.p1))==RM_EXIT:
+            Buff.append(MSG_ESC)
         if player.attacked(0) == 0:
             Buff.append(MSG_DIE + " " + str(dungeon.p1[0]) + " " + str(dungeon.p1[1]))
             print("Sei morto")
@@ -560,7 +559,6 @@ def play():
         if multi:
             # Sending my position
             Buff.append(MSG_POS + " " + str(dungeon.p1[0]) + " " + str(dungeon.p1[1]))
-            print(Buff)
             msg = ""
             for strs in Buff:
                 msg += strs + " "
@@ -570,32 +568,34 @@ def play():
                 break
             # Receiving opponent position
             print("Attendi la mossa del tuo avversario...")
-            msg = conn.recv(1024).decode()
-            print(msg)
-            msg = msg.split(' ')
-            for i in range(len(msg)):
-                if msg[i] == MSG_POS:
-                    pos = []
-                    dungeon.p2 = int(msg[i + 1]), int(msg[i+2])
-                elif msg[i] == MSG_ESC:
-                       player_escape=True;  #primo giocatore è scappato
-                       break;
-                elif msg[i] == MSG_DIE:
-                    dieprint= "Le urla strazianti di un altro avventuriero giungono alle tue orecchie"
-                    dungeon.p2 =int(msg[i + 1]), int(msg[i+2])
-                    dungeon.p2=None
+            if player_escape==False:
+                msg = conn.recv(1024).decode()
+                print(msg)
+                msg = msg.split(' ')
+                for i in range(len(msg)):
+                        if msg[i] == MSG_POS:
+                            pos = []
+                            dungeon.p2 = int(msg[i + 1]), int(msg[i+2])
+                        elif msg[i] == MSG_ESC:
+                            player_escape=True;  #primo giocatore è scappato
+                            break;
+                        elif msg[i] == MSG_DIE:
+                            dieprint= "Le urla strazianti di un altro avventuriero giungono alle tue orecchie"
+                            dungeon.p2 =int(msg[i + 1]), int(msg[i+2])
+                            dungeon.p2=None
+                            conn.close();
+                            multi = None;
+                            break
+            if player_escape == True and (MOVS_TO_ESC<10):  #secondo giocatore ha 10 mosse
+                escprint="L'altro giocatore è riuscito a scappare, ti rimangono 10 mosse ne hai fatte: "+ str(MOVS_TO_ESC)
+                MOVS_TO_ESC += 1
+                if MOVS_TO_ESC==10:
+                    print("Non hai fatto in tempo")
+                    timeout_moves="timeout"   # timeout 10 mosse
+                    conn.sendall(timeout_moves.encode())
                     conn.close();
                     multi = None;
                     break
-            if player_escape == True and (MOVS_TO_ESC<10):  #secondo giocatore ha 10 mosse
-                    MOVS_TO_ESC + 1
-                    escprint="L'altro giocatore è riuscito a scappare, ti rimangono "+ str(MOVS_TO_ESC)+"mosse da fare"
-            if MOVS_TO_ESC==10 :
-              timeout_moves="timeout"   # timeout 10 mosse
-              conn.sendall(timeout_moves.encode())
-              conn.close();
-              multi = None;
-              print("Non hai fatto in tempo")
 
     if conn is not None:
         conn.close()
