@@ -512,14 +512,14 @@ def play():
     movs_to_esc = 0
     opponent_gold = -1
 
-    while True:
+    while not escaped:
         room, curr_tile, exit_found = update(curr_tile, player, dungeon)
         msg_queue.clear()
 
         if opponent_escaped:
-            print("L'altro giocatore è riuscito a scappare, ti rimangono 10 mosse ne hai fatte: " + str(movs_to_esc))
+            print("L'altro giocatore è riuscito a scappare, ti rimangono 10 mosse, ne hai fatte: " + str(movs_to_esc))
         elif opponent_dead:
-            print("Le urla strazianti di un altro avventuriero giungono alle tue orecchie")
+            print("Le urla strazianti di un altro avventuriero giungono alle tue orecchie.")
             opponent_dead = False
 
         if dungeon.p1 == dungeon.p2:
@@ -548,36 +548,44 @@ def play():
         else:
             print("C'è qualcosa in questa stanza, ma non riesci a capire cosa...")
 
-        if exit_found:
-            print("Vedi l'uscita di fronte a te!")
-
         if not escaped:
+            if exit_found:
+                print("Vedi l'uscita di fronte a te!")
+
             previous_tile, curr_tile = move(curr_tile, conn, dungeon, player)
             dungeon.p1 = curr_tile
 
+            if opponent_escaped and (movs_to_esc < 10):  # Opponent got out, only 10 moves left
+                movs_to_esc += 1
+
+                if movs_to_esc == 10:
+                    print("Senti la porta chiudersi in lontananza, intrappolandoti per sempre...")
+                    player.attacked(player.health)  # DEAD X_X
+
         if multi:
-            # Sending whether I'm dead
+            # Queueing my position
+            msg_queue.append(MSG_POS + " " + str(dungeon.p1[0]) + " " + str(dungeon.p1[1]))
+
+            # Queueing whether I'm dead
             if not player.attacked(0):
                 msg_queue.append(MSG_DIE)
 
-            # Sending my position
-            msg_queue.append(MSG_POS + " " + str(dungeon.p1[0]) + " " + str(dungeon.p1[1]))
+            # Sending all pending messages
             msg = ""
             for strs in msg_queue:
                 msg += strs + " "
             conn.sendall(msg.encode())
 
-            # Receiving opponent position
+            # Receiving opponent data
             print("Attendi la mossa del tuo avversario...")
 
-            if not opponent_escaped:
+            while not (opponent_escaped or opponent_dead):
                 msg = conn.recv(1024).decode()
                 # print(msg) # <--- debug
                 msg = msg.split(' ')
 
                 for i in range(len(msg)):
                     if msg[i] == MSG_POS:
-                        pos = []
                         dungeon.p2 = int(msg[i+1]), int(msg[i+2])
                     elif msg[i] == MSG_ESC:
                         opponent_escaped = True  # First player got out
@@ -590,32 +598,13 @@ def play():
                         multi = False
                         break
 
-            if opponent_escaped and (movs_to_esc < 10):  # Opponent got out, only 10 moves left
-                movs_to_esc += 1
-
-                if movs_to_esc == 10:
-                    print("Senti la porta chiudersi in lontananza, intrappolandoti per sempre...")
-                    player.attacked(player.health)  # DEAD X_X
-                    conn.sendall(MSG_DIE.encode())
-                    conn.close()
-                    multi = False
+                # Keep receiving if you are waiting the opponent and said opponent didn't die yet.
+                # All I wanted was a DO - WHILE.
+                if not wait_opponent:
                     break
 
         if not player.attacked(0):
             print("Sei morto.")
-            break
-
-        if wait_opponent:  # Wait your opponent
-            print("In attesa del tuo avversario...")
-            while True:
-                opponent_result = conn.recv(1024).decode().split(' ')
-                if opponent_result[0] == MSG_ESC:
-                    opponent_gold = int(opponent_result[1])
-                    break
-                elif opponent_result[0] == MSG_DIE:
-                    break
-
-        if escaped:
             break
 
     # END GAME LOOP #
