@@ -598,7 +598,7 @@ def play():
                         multi = False
                         break
                     elif msg[i] == MSG_CLR:
-                        dungeon.set(RM_EMPTY, (int(msg[i+1]), int(msg[i+2]))
+                        dungeon.set((int(msg[i+1]), int(msg[i+2])), RM_EMPTY)
                         break
 
                 # Keep receiving if you are waiting the opponent and said opponent didn't die yet.
