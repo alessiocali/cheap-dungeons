@@ -41,6 +41,11 @@ RM_LOCKP = 'l'
 RM_COMP = 'C'
 RM_SWRD = 's'
 
+MSG_DIE = "DEAD"
+MSG_ESC = "ESCAPE"
+MSG_CLR = "CLEAR"
+MSG_POS = "POS"
+
 
 # Dungeon data
 class DungeonGraph:
@@ -370,11 +375,10 @@ def update(curr_tile, player, dungeon):
 
     # Print UI
     dungeon.print_hidden(curr_tile, DUNGEON_SIGHT, player)
-
     return new_room, curr_tile, exit_nearby
 
 
-def move(curr_tile, socket, dungeon):
+def move(curr_tile, socket, dungeon, player):
     x, y, nx, ny = None, None, None, None
 
     while True:
@@ -394,13 +398,17 @@ def move(curr_tile, socket, dungeon):
             ny = y + 1
         elif pl_input == '':
             print("Decidi di restare qui")
-        elif pl_input == "esci":
+        elif pl_input == "quit":
             if socket is not None:
                 socket.close()
             exit()
         elif pl_input == "brighteyes":  # Cheat for printing the whole map
             dungeon.print()
             continue
+        elif pl_input == "kill":  # Cheat for suicide
+            player.attacked(player.health)
+        elif pl_input == "exit":  # Cheat for exit
+            dungeon.set(dungeon.p1, RM_EXIT)
         else:
             print("Input non riconosciuto.")
             continue
@@ -496,8 +504,23 @@ def play():
 
     player.name = input()
 
-    while True:
+    msg_queue = []
+    escaped = False
+    opponent_escaped = False
+    opponent_dead = False
+    wait_opponent = False
+    movs_to_esc = 0
+    opponent_gold = -1
+
+    while not escaped:
         room, curr_tile, exit_found = update(curr_tile, player, dungeon)
+        msg_queue.clear()
+
+        if opponent_escaped:
+            print("L'altro giocatore è riuscito a scappare, ti rimangono 10 mosse, ne hai fatte: " + str(movs_to_esc))
+        elif opponent_dead:
+            print("Le urla strazianti di un altro avventuriero giungono alle tue orecchie.")
+            opponent_dead = False
 
         if dungeon.p1 == dungeon.p2:
             print("Di fronte a te si staglia uno sconosciuto...")
@@ -512,32 +535,94 @@ def play():
         elif room == RM_QUIZ:
             print("Sulla parete è riportata una misteriosa incisione...")
         elif room == RM_EXIT:
-            break
+            escaped = True
+
+            if multi:
+                msg_queue.append(MSG_ESC + " " + str(player.coin))   # Send escape message and Gold amount
+
+                if not opponent_escaped:  # First player to get out, must wait
+                    wait_opponent = True
+                else:
+                    print("Sei fuggito in tempo.")    # Second player to get out
+
         else:
             print("C'è qualcosa in questa stanza, ma non riesci a capire cosa...")
-        if exit_found:
-            print("Vedi l'uscita di fronte a te!")
 
-        previous_tile, curr_tile = move(curr_tile, conn, dungeon)
-        dungeon.p1 = curr_tile
+        if not escaped:
+            if exit_found:
+                print("Vedi l'uscita di fronte a te!")
+
+            previous_tile, curr_tile = move(curr_tile, conn, dungeon, player)
+            dungeon.p1 = curr_tile
+
+            if opponent_escaped and (movs_to_esc < 10):  # Opponent got out, only 10 moves left
+                movs_to_esc += 1
+
+                if movs_to_esc == 10:
+                    print("Senti la porta chiudersi in lontananza, intrappolandoti per sempre...")
+                    player.attacked(player.health)  # DEAD X_X
 
         if multi:
-            # Sending my position
-            pos_string = str(dungeon.p1[0]) + ',' + str(dungeon.p1[1])
-            conn.sendall(pos_string.encode())
+            # Queueing my position
+            msg_queue.append(MSG_POS + " " + str(dungeon.p1[0]) + " " + str(dungeon.p1[1]))
 
-            # Receiving opponent position
+            # Queueing whether I'm dead
+            if not player.attacked(0):
+                msg_queue.append(MSG_DIE)
+
+            # Sending all pending messages
+            msg = ""
+            for strs in msg_queue:
+                msg += strs + " "
+            conn.sendall(msg.encode())
+
+            # Receiving opponent data
             print("Attendi la mossa del tuo avversario...")
-            pos_string = conn.recv(1024).decode()
-            pos = pos_string.split(',')
-            dungeon.p2 = int(pos[0]), int(pos[1])
+
+            while not (opponent_escaped or opponent_dead):
+                msg = conn.recv(1024).decode()
+                # print(msg) # <--- debug
+                msg = msg.split(' ')
+
+                for i in range(len(msg)):
+                    if msg[i] == MSG_POS:
+                        dungeon.p2 = int(msg[i+1]), int(msg[i+2])
+                    elif msg[i] == MSG_ESC:
+                        opponent_escaped = True  # First player got out
+                        opponent_gold = int(msg[i+1])
+                        break
+                    elif msg[i] == MSG_DIE:
+                        opponent_dead = True
+                        dungeon.p2 = None
+                        conn.close()
+                        multi = False
+                        break
+
+                # Keep receiving if you are waiting the opponent and said opponent didn't die yet.
+                # All I wanted was a DO - WHILE.
+                if not wait_opponent:
+                    break
+
+        if not player.attacked(0):
+            print("Sei morto.")
+            break
+
+    # END GAME LOOP #
 
     if conn is not None:
         conn.close()
 
-    print("Riesci finalmente a vedere la luce del giorno. Congratulazioni!")
-    input("Premi un tasto per uscire...")
+    if player.attacked(0):
+        print("Riesci finalmente a vedere la luce del giorno. Congratulazioni!")
+        if opponent_gold != -1:
+            print("Il tuo avversario ha raccimolato ben " + str(opponent_gold) + " monete d'oro.")
+            print("Hai raccimolato ben " + str(player.coin) + " monete d'oro.")
+            if opponent_gold > player.coin:
+                print("Il tuo avversario vince!")
+            else:
+                print("Hai vinto!")
 
+    input("Premi un tasto per uscire...")
 
 #############
 #    RUN    #
