@@ -597,6 +597,9 @@ def play():
                         conn.close()
                         multi = False
                         break
+                    elif msg[i] == MSG_CLR:
+                        dungeon.set(RM_EMPTY, (int(msg[i+1]), int(msg[i+2]))
+                        break
 
                 # Keep receiving if you are waiting the opponent and said opponent didn't die yet.
                 # All I wanted was a DO - WHILE.
