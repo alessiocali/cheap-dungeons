@@ -23,7 +23,7 @@ DRUNK_CHANCE = 0.3  # The probability that when connecting a cell and the exit, 
 
 PC_MNST = 0.05  # Percentage of monsters over the free cells
 PC_TRAP = 0.05  # Percentage of traps
-PC_QUIZ = 0.025  # Percentage of traps
+PC_QUIZ = 0.025  # Percentage of quizzes
 PC_CHEST = 0.05  # Percentage of chests
 
 RM_WALL = '#'  # All the map symbols
@@ -63,9 +63,9 @@ class DungeonGraph:
     def __init__(self, multi):
         # Generate empty
         for i in range(0, DUNGEON_SIZE):
-            self.data += [[]]
+            self.data.append([])
             for j in range(0, DUNGEON_SIZE):
-                self.data[i] += [RM_WALL]
+                self.data[i].append(RM_WALL)
 
         random.seed()
 
@@ -147,13 +147,13 @@ class DungeonGraph:
         nearby = []
         x, y = pos
         if x > 0:
-            nearby += [(x - 1, y)]
+            nearby.append((x - 1, y))
         if x < DUNGEON_SIZE - 1:
-            nearby += [(x + 1, y)]
+            nearby.append((x + 1, y))
         if y > 0:
-            nearby += [(x, y - 1)]
+            nearby.append((x, y - 1))
         if y < DUNGEON_SIZE - 1:
-            nearby += [(x, y + 1)]
+            nearby.append((x, y + 1))
         return nearby
 
     # Print the whole map
