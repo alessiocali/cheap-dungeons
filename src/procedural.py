@@ -408,6 +408,7 @@ def move(curr_tile, socket, dungeon, player):
         elif pl_input == 'JUSTINBAILEY':
             cheats_enabled = not cheats_enabled
             print("Trucchi abilitati!" if cheats_enabled else "Trucchi disabilitati!")
+            continue
         elif pl_input == "quit":
             if socket is not None:
                 socket.close()
@@ -554,7 +555,7 @@ def play():
     turnback = False
 
     with open("quiz.txt") as quiz_file:
-        quizzes = [quiz.split('-') for quiz in quiz_file.readlines()]
+        quizzes = [quiz.strip().split('-') for quiz in quiz_file.readlines()]
 
     # GAME LOOP #
     while not escaped:
