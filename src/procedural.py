@@ -6,9 +6,9 @@ import math
 #       IMPORTANT NOTE                                                                                              #
 #####################################################################################################################
 #   Throughout the file x and y symbols are used to refer to elements within the grid. These ARE NOT intended to be #
-#   x = abscissa / y = ordinate. NOPE. Rather x = row, y = column. I know, I know. It's counter-intuitive. But it   #
-#   is due to how the grid is accessed (if I print data[i][j] in a double i,j loop it will first access each row    #
-#   and then its subsequent elements). Deal with it.                                                                #
+#   x = abscissa / y = ordinate. Rather x = row, y = column. It's counter-intuitive, but it is due to how the grid  #
+#   is accessed (if I print data[i][j] in a double i,j loop it will first access each row and then its subsequent   #
+#   elements).                                                                                                      #
 #####################################################################################################################
 
 MULTI_PORT = 8390
@@ -47,7 +47,9 @@ MSG_ESC = "ESCAPE"
 MSG_CLR = "CLEAR"
 MSG_POS = "POS"
 
-DIRECTIONS = ["Nord-Ovest", "Nord", "Nord-Est", "Est", "Sud-Est", "Sud", "Sud-Ovest"]
+DIRECTIONS = ("Nord-Ovest", "Nord", "Nord-Est", "Est", "Sud-Est", "Sud", "Sud-Ovest")
+
+cheats_enabled = False
 
 
 # Dungeon data
@@ -190,12 +192,12 @@ class DungeonGraph:
                 for j in range(0, DUNGEON_SIZE):
                     if y - radius <= j < y + radius:
                         # Hide elements unknown to the player; substitute player position symbol with RM_PLAYER
-                        subrow += [RM_PLAYER] if (i, j) == self.p1 \
-                            else [RM_PLAYER2] if (i, j) == self.p2 and (i, j) in player_info.discovered \
-                            else [self.data[i][j]] if (i, j) in player_info.discovered \
-                            else [RM_UNKNW]
+                        subrow.append(RM_PLAYER if (i, j) == self.p1
+                                      else RM_PLAYER2 if (i, j) == self.p2 and (i, j) in player_info.discovered
+                                      else self.data[i][j] if (i, j) in player_info.discovered
+                                      else RM_UNKNW)
 
-                submatrix += [subrow]
+                submatrix.append(subrow)
 
         size = len(submatrix)
 
@@ -246,7 +248,7 @@ class DungeonGraph:
             dirs[0], dirs[idx] = dirs[idx], dirs[0]
             rnd = random.random()
 
-            # Pick a random direction, favoring the last one
+            # Pick a random direction, favoring the first one
             if rnd < CORRIDOR_BIAS:
                 cur_dir = dirs[0]
             elif rnd < CORRIDOR_BIAS + CORRIDOR_CM_BIAS:
@@ -266,7 +268,7 @@ class DungeonGraph:
                     break
                 elif next_tile == RM_EMPTY or next_tile == RM_WALL:  # Else if wall or empty...
                     self.set(next_pos, RM_EMPTY)  # Free this tile
-                    seq += [next_pos]  # Add next position to sequence
+                    seq.append(next_pos)  # Add next position to sequence
                     pos = next_pos  # Update position
                     most_likely = cur_dir  # Update most likely direction
                     drunk_count += 1  # Step  counter
@@ -280,7 +282,7 @@ class DungeonGraph:
         return seq
 
     # Connect start to goal through straight lines
-    def unravel_path(self, start, goal):
+    def connect_path(self, start, goal):
         current = start
         cx, cy = current
         gx, gy = goal
@@ -300,22 +302,23 @@ class DungeonGraph:
             if current == goal:
                 break
 
-            if self.get(current) != RM_PLAYER:  # Empty the current cell
-                self.set(current, RM_EMPTY)
+            self.set(current, RM_EMPTY)     # Empty the current cell
+
             if random.random() < DRUNK_CHANCE:  # By DRUNK_CHANCE, do a Drunken Walk from the current cell
                 self.drunk_path(current, DRUNK_LIMIT / 10)
 
-    # Use drunken walk + unravel to connect start and goal
+    # Use drunken walk + connect_path to connect start and goal
     def drunken_star(self, start, goal):
-        dr_path = self.drunk_path(start, DRUNK_LIMIT)
-        connect_start = dr_path[random.randint(0, len(dr_path) - 1)]
-        self.unravel_path(connect_start, goal)
+        dr_path = self.drunk_path(start, DRUNK_LIMIT)   # Do a random walk from start
+        connect_start = random.choice(dr_path)    # Connect goal to a random position in the path
+        self.connect_path(connect_start, goal)
 
     # Get all empty cells as (x, y) tuples. Exclude player cells.
     def get_empty(self):
-        return [(i, j) for i in range(0, DUNGEON_SIZE) for j in range(0, DUNGEON_SIZE) if
+        return [(i, j) for i in range(DUNGEON_SIZE) for j in range(DUNGEON_SIZE) if
                 self.data[i][j] == RM_EMPTY and (i, j) not in (self.p1, self.p2)]
 
+    # Place count times symbol over the grid, given the list of empty cells
     def place(self, symbol, count, empties):
         placed = 0
         while placed < count:
@@ -342,19 +345,16 @@ class Player:
         self.health = self.health - health_lost if self.health > health_lost else 0
         return self.health != 0
 
-    def lose_coin(self, coin_lost):
-        self.coin = self.coin - coin_lost if self.coin > coin_lost else 0
-
     def discover(self, new):
         self.discovered |= new
 
 
-# Spit a random coordinate except borders.
+# Get a random coordinate except borders.
 def random_coord():
     return random.randint(1, DUNGEON_SIZE - 2), random.randint(1, DUNGEON_SIZE - 2)
 
 
-# Distance between coordinates is defined by taxi-geometry rather then euclidean
+# Distance between coordinates is defined by taxicab-geometry rather then euclidean
 def tpl_dst(a, b):
     x1, y1 = a
     x2, y2 = b
@@ -365,6 +365,7 @@ def before(ta, tb):
     return ta[0] < tb[0] and ta[1] < tb[1]
 
 
+# Discover nearby rooms and print the hidden map
 def update(curr_tile, player, dungeon):
     new_room = dungeon.get(curr_tile)
 
@@ -381,8 +382,11 @@ def update(curr_tile, player, dungeon):
     return new_room, curr_tile, exit_nearby
 
 
+# Get input from player and decide the next cell. Cheats can be input here as well.
+# Master code: JUSTINBAILEY
 def move(curr_tile, socket, dungeon, player):
     x, y, nx, ny = None, None, None, None
+    global cheats_enabled
 
     while True:
         print("Dove desideri andare?")
@@ -401,29 +405,33 @@ def move(curr_tile, socket, dungeon, player):
             ny = y + 1
         elif pl_input == '':
             print("Decidi di restare qui")
-        elif pl_input == "triforce":
-            player.has_compass = True
-            continue
-        elif pl_input == "greyskull":
-            player.has_sword = True
-            continue
-        elif pl_input == "thievesguild":
-            player.has_lockpick = True
-            continue
-        elif pl_input == "cutthroat":
-            player.has_knife = True
-            continue
+        elif pl_input == 'JUSTINBAILEY':
+            cheats_enabled = not cheats_enabled
+            print("Trucchi abilitati!" if cheats_enabled else "Trucchi disabilitati!")
         elif pl_input == "quit":
             if socket is not None:
                 socket.close()
             exit()
-        elif pl_input == "brighteyes":  # Cheat for printing the whole map
-            dungeon.print()
-            continue
-        elif pl_input == "kill":  # Cheat for suicide
-            player.attacked(player.health)
-        elif pl_input == "exit":  # Cheat for exit
-            dungeon.set(dungeon.p1, RM_EXIT)
+        elif cheats_enabled:
+            if pl_input == "triforce":      # Get the compass
+                player.has_compass = True
+                continue
+            elif pl_input == "greyskull":   # Get the sword
+                player.has_sword = True
+                continue
+            elif pl_input == "thievesguild":    # Get the lockpick
+                player.has_lockpick = True
+                continue
+            elif pl_input == "cutthroat":   # Get the knife
+                player.has_knife = True
+                continue
+            elif pl_input == "brighteyes":  # Cheat for printing the whole map
+                dungeon.print()
+                continue
+            elif pl_input == "seppuku":  # Cheat for suicide
+                player.attacked(player.health)
+            elif pl_input == "escaperod":  # Cheat for exit
+                dungeon.set(dungeon.p1, RM_EXIT)
         else:
             print("Input non riconosciuto.")
             continue
@@ -440,6 +448,12 @@ def move(curr_tile, socket, dungeon, player):
 
 
 def play():
+    print("  _______ _________   ___    ___  __  ___  _______________  _  ______")
+    print(" / ___/ // / __/ _ | / _ \  / _ \/ / / / |/ / ___/ __/ __ \/ |/ / __/")
+    print("/ /__/ _  / _// __ |/ ___/ / // / /_/ /    / (_ / _// /_/ /    /\ \  ")
+    print("\___/_//_/___/_/ |_/_/    /____/\____/_/|_/\___/___/\____/_/|_/___/  ")
+    print()
+    print("Benvenuto a Cheap Dungeons!")
     print("Vuoi giocare in solo o con un amico? s/a")
     multi = input() == "a"
 
@@ -447,7 +461,6 @@ def play():
     player = Player()
 
     conn = None
-    curr_tile = dungeon.p1
 
     if multi:
         print("Desideri iniziare una nuova partita o connetterti ad una già esistente? n/c")
@@ -467,25 +480,30 @@ def play():
 
             msg = "DUNGEON"
 
-            for i in range(DUNGEON_SIZE):   # Receive map row by row
+            try:
+                for i in range(DUNGEON_SIZE):   # Receive map row by row
+                    conn.sendall(msg.encode())
+                    dungeon.data[i] = list(conn.recv(1024).decode())
+                    print("Ricezione mappa : " + str(float(i) / DUNGEON_SIZE * 100) + "%                ", end='\r')
+
+                print("Riceziona mappa completata")
+
+                # Receive P1 and P2
+                pos_string = conn.recv(1024).decode()
+                pos_p1 = pos_string.split(',')
+
                 conn.sendall(msg.encode())
-                dungeon.data[i] = list(conn.recv(1024).decode())
-                print("Ricezione mappa : " + str(float(i) / DUNGEON_SIZE * 100) + "%                ", end='\r')
+                pos_string = conn.recv(1024).decode()
+                pos_p2 = pos_string.split(',')
 
-            print("Riceziona mappa completata")
+                dungeon.p2 = int(pos_p1[0]), int(pos_p1[1])  # Positions are swapped because this is the second player
+                dungeon.p1 = int(pos_p2[0]), int(pos_p2[1])
 
-            # Receive P1 and P2
-            pos_string = conn.recv(1024).decode()
-            pos_p1 = pos_string.split(',')
-
-            conn.sendall(msg.encode())
-            pos_string = conn.recv(1024).decode()
-            pos_p2 = pos_string.split(',')
-
-            dungeon.p2 = int(pos_p1[0]), int(pos_p1[1])  # Positions are swapped because this is the second player
-            dungeon.p1 = int(pos_p2[0]), int(pos_p2[1])
-
-            curr_tile = dungeon.p1
+            except ConnectionAbortedError:
+                print("Connessione interrotta dall'avversario")
+                multi = False
+                dungeon.p2 = None
+                conn.close()
 
         else:
             print("In attesa dell'avversario...")
@@ -495,31 +513,38 @@ def play():
             conn, _ = c.accept()
             c.close()
 
-            for i in range(DUNGEON_SIZE):   # Send map row by row
-                msg = conn.recv(1024).decode()
-                if msg == "DUNGEON":
-                    conn.sendall(''.join(dungeon.data[i]).encode())
-                    print("Invio mappa : " + str(float(i) / DUNGEON_SIZE * 100) + "%                  ", end='\r')
+            try:
+                for i in range(DUNGEON_SIZE):   # Send map row by row
+                    msg = conn.recv(1024).decode()
+                    if msg == "DUNGEON":
+                        conn.sendall(''.join(dungeon.data[i]).encode())
+                        print("Invio mappa : " + str(float(i) / DUNGEON_SIZE * 100) + "%                  ", end='\r')
 
-            print("Invio mappa completato")
+                print("Invio mappa completato")
 
-            pos_string_p1 = str(dungeon.p1[0]) + ',' + str(dungeon.p1[1])
-            pos_string_p2 = str(dungeon.p2[0]) + ',' + str(dungeon.p2[1])
+                pos_string_p1 = str(dungeon.p1[0]) + ',' + str(dungeon.p1[1])
+                pos_string_p2 = str(dungeon.p2[0]) + ',' + str(dungeon.p2[1])
 
-            conn.sendall(pos_string_p1.encode())
-            err = conn.recv(1024).decode()
+                conn.sendall(pos_string_p1.encode())
+                received = conn.recv(1024).decode()
 
-            if err == "DUNGEON":
-                conn.sendall(pos_string_p2.encode())
+                if received == "DUNGEON":
+                    conn.sendall(pos_string_p2.encode())
 
-            curr_tile = dungeon.p1
+            except ConnectionAbortedError:
+                print("Connessione interrotta dall'avversario")
+                multi = False
+                dungeon.p2 = None
+                conn.close()
 
     print("Senza ricordare il perché, ti ritrovi in un luogo a te non familiare...")
     print("Qual è il tuo nome?")
 
     player.name = input()
 
+    # Some initialization
     msg_queue = []
+    previous_tile = curr_tile = dungeon.p1
     escaped = False
     opponent_escaped = False
     opponent_dead = False
@@ -531,152 +556,206 @@ def play():
     with open("quiz.txt") as quiz_file:
         quizzes = [quiz.split('-') for quiz in quiz_file.readlines()]
 
+    # GAME LOOP #
     while not escaped:
         room, curr_tile, exit_found = update(curr_tile, player, dungeon)
         msg_queue.clear()
 
         if opponent_escaped:
-            print("L'altro giocatore è riuscito a scappare, ti rimangono 10 mosse, ne hai fatte: " + str(movs_to_esc))
+            print("In lontananza, senti la porta chiudersi. Ti rimangono 10 mosse, ne hai fatte: " + str(movs_to_esc))
         elif opponent_dead:
             print("Le urla strazianti di un altro avventuriero giungono alle tue orecchie.")
             opponent_dead = False
 
         if player.has_compass:
             direction = "Ovest"
-            for i in range(6):
-                maxAng = math.pi * (7 - 2*i) / 8
-                minAng = math.pi * (5 - 2*i) / 8
+            for i in range(7):
+                max_ang = math.pi * (7 - 2*i) / 8
+                min_ang = math.pi * (5 - 2*i) / 8
                 ang = math.atan2(dungeon.p1[0] - dungeon.exit[0], dungeon.exit[1] - dungeon.p1[1])
-                if minAng < ang <= maxAng:
+                if min_ang < ang <= max_ang:
                     direction = DIRECTIONS[i]
-            print("La bussola indica verso "+ direction)
+                    break
 
+            print("La bussola indica verso " + direction)
+
+        # Player encounter cases
         if dungeon.p1 == dungeon.p2:
             turnback = True
+
             print("Di fronte a te si staglia uno sconosciuto...")
             print("Cosa desideri fare?")
-            print("s- Saluta lo sconosciuto")
+            print("s - Saluta lo sconosciuto")
             if player.has_sword:
-                print("a- Attacca lo sconosciuto")
+                print("a - Attacca lo sconosciuto")
             if player.has_knife:
-                print("r- Deruba lo sconosciuto")
+                print("r - Deruba lo sconosciuto")
             choice = input()
-            if choice == "s":
-                print("Cosa vuoi dire allo sconosciuto?")
-                msg = input()
-                conn.sendall(("S:" + msg).encode())
-                opp_choice = conn.recv(1024).decode().split(":", 1)
-                if opp_choice[0] == "S":
-                    print("Lo sconosciuto ti dice:")
-                    print(opp_choice[1])
-                elif opp_choice[0] == "A":
-                    print("Lo sconosciuto sguaina la spada.. Ma inciampa come una pera cotta")
-                elif opp_choice[0] == "R":
-                    print("Vieni derubato dallo sconosciuto!")
-                    coin_lost = int (player.coin * 0.25)
-                    player.coin -= coin_lost
-                    conn.sendall(str(coin_lost).encode())
-            elif choice == "a" and player.has_sword:
-                conn.sendall("A:".encode())
-                opp_choice = conn.recv(1024).decode().split(":", 1)
-                if opp_choice[0] == "S":
-                    print("Ti prepari ad attacare lo sconosciuto..")
-                    print("Ma il Karma punisce le tue cattive intenzioni")
-                    print("Inciampi e perdi parte del tuo bottino")
-                    player.coin = int(player.coin * 0.75)
-                elif opp_choice[0] == "A":
-                    print("Lo sconosciuto risponde all'attaco e rimani ferito")
-                    player.attacked(1)
-                elif opp_choice[0] == "R":
-                    print("Il tuo avversario intendeva derubarti ma tu riesci a respingerlo")
-            elif choice == "r" and player.has_knife:
-                conn.sendall("R:".encode())
-                opp_choice = conn.recv(1024).decode().split(":", 1)
-                if opp_choice[0] == "S":
-                    print("Riesci a derubare l'ignaro sconosciuto")
-                    player.coin += int(conn.recv(1024).decode())
-                elif opp_choice[0] == "A":
-                    print("L'avversario percepisce le tue intenzioni e ti attacca")
-                    player.attacked(2)
-                elif opp_choice[0] == "R":
-                    luck = random.randrange(1, 1000)
-                    conn.send(str(luck).encode())
-                    opp_luck = int(conn.recv(1024).decode())
-                    if luck < opp_luck:
-                        print("Vieni derubato dallo sconosciuto")
+
+            try:
+                # Handle "Greet" cases
+                if choice == "s":
+                    print("Cosa vuoi dire allo sconosciuto?")
+                    msg = input()
+
+                    conn.sendall(("S:" + msg).encode())
+                    opp_choice = conn.recv(1024).decode().split(":", 1)
+
+                    if opp_choice[0] == "S":
+                        print("Lo sconosciuto ti dice:")
+                        print(opp_choice[1])
+
+                    elif opp_choice[0] == "A":
+                        print("Lo sconosciuto sguaina la spada.. Ma inciampa come una pera cotta")
+
+                    elif opp_choice[0] == "R":
+                        print("Vieni derubato dallo sconosciuto!")
                         coin_lost = int(player.coin * 0.25)
                         player.coin -= coin_lost
                         conn.sendall(str(coin_lost).encode())
-                    elif luck > opp_luck:
-                        print("Riesci a derubare lo sconosciuto")
+
+                # Handle "Attack" cases
+                elif choice == "a" and player.has_sword:
+                    conn.sendall("A:".encode())
+                    opp_choice = conn.recv(1024).decode().split(":", 1)
+
+                    if opp_choice[0] == "S":
+                        print("Ti prepari ad attacare lo sconosciuto..")
+                        print("Ma il Karma punisce le tue cattive intenzioni.")
+                        print("Inciampi e perdi parte del tuo bottino.")
+                        player.coin = int(player.coin * 0.75)
+
+                    elif opp_choice[0] == "A":
+                        print("Lo sconosciuto risponde all'attacco e rimani ferito")
+                        player.attacked(1)
+
+                    elif opp_choice[0] == "R":
+                        print("Il tuo avversario intendeva derubarti, ma riesci a respingerlo")
+
+                # Handle "Steal" cases
+                elif choice == "r" and player.has_knife:
+                    conn.sendall("R:".encode())
+                    opp_choice = conn.recv(1024).decode().split(":", 1)
+
+                    if opp_choice[0] == "S":
+                        print("Riesci a derubare l'ignaro sconosciuto.")
                         player.coin += int(conn.recv(1024).decode())
-                    else:
-                        print("Nella foga di derubarvi a vicenda non concludete nulla")
-            input("Decidi di tornare indietro... (premi un tasto)")
+
+                    elif opp_choice[0] == "A":
+                        print("L'avversario percepisce le tue intenzioni e ti attacca.")
+                        player.attacked(2)
+
+                    elif opp_choice[0] == "R":
+                        luck = random.randrange(1, 1000)
+                        conn.send(str(luck).encode())
+                        opp_luck = int(conn.recv(1024).decode())
+
+                        if luck < opp_luck:
+                            print("Vieni derubato dallo sconosciuto!")
+                            coin_lost = int(player.coin * 0.25)
+                            player.coin -= coin_lost
+                            conn.sendall(str(coin_lost).encode())
+
+                        elif luck > opp_luck:
+                            print("Riesci a derubare lo sconosciuto.")
+                            player.coin += int(conn.recv(1024).decode())
+
+                        else:
+                            print("Nella foga di derubarvi a vicenda non concludete nulla")
+
+            except ConnectionAbortedError:
+                print("L'avversario ha interrotto la connessione")
+                multi = False
+                dungeon.p2 = None
+                conn.close()
+
         elif room == RM_EMPTY:
             print("Ti immetti nel tetro corridoio...")
+
+        # "Mechanics" rooms cases
         elif room == RM_MNST:
             print("Un mostro orribile ti si para davanti!")
+
             if player.has_sword:
                 print("Usando la tua spada riesci a distruggere il mostro!")
             else:
                 player.attacked(1)
                 print("Riesci a sconfiggere il mostro, ma subisci dei danni")
+
             dungeon.set(dungeon.p1, RM_EMPTY)
             msg_queue.append(MSG_CLR + " " + str(dungeon.p1[0]) + " " + str(dungeon.p1[1]))
+
         elif room == RM_CHEST:
             print("Trovi una cassa del tesoro davanti a te!")
+
             if player.has_lockpick:
                 print("Utilizzando il grimaldello riesci ad aprire la cassa")
                 coin_amount = random.randrange(10, 100)
                 player.coin += coin_amount
+
                 dungeon.set(dungeon.p1, RM_EMPTY)
                 msg_queue.append(MSG_CLR + " " + str(dungeon.p1[0]) + " " + str(dungeon.p1[1]))
+
             else:
                 print("La cassa è chiusa e non riesci ad aprirla")
+
         elif room == RM_TRAP:
             print("Questa stanza contiene una trappola!")
-            if random.random()<0.5:
+
+            if random.random() < 0.5:
                 print("Ti accorgi della trappola e riesci ad evitarla")
             else:
                 if player.has_knife:
                     print("Riesci a disinnescare la trappola col tuo coltello")
-                elif random.random()<0.5:
+
+                elif random.random() < 0.5:
                     player.attacked(2)
                     print("Una nube di gas velenoso ti avvolge")
+
                 else:
-                    player.coin = int (player.coin * 0.75)
+                    player.coin = int(player.coin * 0.75)
                     print("Il pavimento si apre sotto ai tuoi piedi.")
                     print("Riesci a metterti in salvo ma parte del tuo bottino cade nel fosso")
+
             dungeon.set(dungeon.p1, RM_EMPTY)
             msg_queue.append(MSG_CLR + " " + str(dungeon.p1[0]) + " " + str(dungeon.p1[1]))
+
         elif room == RM_QUIZ:
             print("Sulla parete è riportata una misteriosa incisione...")
             quiz = random.choice(quizzes)
             print(quiz[0])
             ans = input().lower()
+
             if ans == quiz[1]:
                 print("Si apre un'alcova e trovi un tesoro")
                 player.coin += random.randrange(10, 100)
+
             elif random.random() < 0.5:
                 player.attacked(2)
                 print("Una nube di gas velenoso ti avvolge")
+
             else:
                 player.coin = int(player.coin * 0.75)
                 print("Il pavimento si apre sotto ai tuoi piedi.")
                 print("Riesci a metterti in salvo ma parte del tuo bottino cade nel fosso")
+
             dungeon.set(dungeon.p1, RM_EMPTY)
             msg_queue.append(MSG_CLR + " " + str(dungeon.p1[0]) + " " + str(dungeon.p1[1]))
+
+        # Item rooms cases
         elif room == RM_COMP:
             print("Trovi una bussola in questa stanza")
+
             if player.has_compass:
                 print("Ma ne hai già una..")
             else:
                 player.has_compass = True
-                dungeon.place(dungeon.p1, RM_EMPTY)
-                msg_queue.set(MSG_CLR + " " + str(dungeon.p1[0]) + " " + str(dungeon.p1[1]))
+                dungeon.set(dungeon.p1, RM_EMPTY)
+                msg_queue.append(MSG_CLR + " " + str(dungeon.p1[0]) + " " + str(dungeon.p1[1]))
+
         elif room == RM_SWRD:
             print("Trovi una spada in questa stanza")
+
             if player.has_sword:
                 print("Ma ne hai già una..")
             else:
@@ -686,6 +765,7 @@ def play():
 
         elif room == RM_KNIFE:
             print("Trovi un coltello in questa stanza")
+
             if player.has_knife:
                 print("Ma ne hai già uno..")
             else:
@@ -695,6 +775,7 @@ def play():
 
         elif room == RM_LOCKP:
             print("Trovi un grimaldello in questa stanza")
+
             if player.has_lockpick:
                 print("Ma ne hai già uno..")
             else:
@@ -702,6 +783,7 @@ def play():
                 dungeon.set(dungeon.p1, RM_EMPTY)
                 msg_queue.append(MSG_CLR + " " + str(dungeon.p1[0]) + " " + str(dungeon.p1[1]))
 
+        # Other cases
         elif room == RM_EXIT:
             escaped = True
 
@@ -711,7 +793,7 @@ def play():
                 if not opponent_escaped:  # First player to get out, must wait
                     wait_opponent = True
                 else:
-                    print("Sei fuggito in tempo.")    # Second player to get out
+                    print("Sei fuggito in tempo!")    # Second player to get out
 
         else:
             print("C'è qualcosa in questa stanza, ma non riesci a capire cosa...")
@@ -723,6 +805,7 @@ def play():
             if turnback:
                 turnback = False
                 curr_tile = previous_tile
+                input("Decidi di tornare indietro... (premi un tasto)")
             else:
                 previous_tile, curr_tile = move(curr_tile, conn, dungeon, player)
             dungeon.p1 = curr_tile
@@ -735,48 +818,55 @@ def play():
                     player.attacked(player.health)  # DEAD X_X
 
         if multi:
-            # Queueing my position
-            msg_queue.append(MSG_POS + " " + str(dungeon.p1[0]) + " " + str(dungeon.p1[1]))
+            try:
+                # Queueing my position
+                msg_queue.append(MSG_POS + " " + str(dungeon.p1[0]) + " " + str(dungeon.p1[1]))
 
-            # Queueing whether I'm dead
-            if not player.attacked(0):
-                msg_queue.append(MSG_DIE)
+                # Queueing whether I'm dead
+                if not player.attacked(0):
+                    msg_queue.append(MSG_DIE)
 
-            # Sending all pending messages
-            msg = ""
-            for strs in msg_queue:
-                msg += strs + " "
-            conn.sendall(msg.encode())
+                # Sending all pending messages
+                msg = ""
+                for strs in msg_queue:
+                    msg += strs + " "
+                conn.sendall(msg.encode())
 
-            # Receiving opponent data
-            print("Attendi la mossa del tuo avversario...")
+                # Receiving opponent data
+                print("Attendi la mossa del tuo avversario...")
 
-            while not (opponent_escaped or opponent_dead):
-                msg = conn.recv(1024).decode()
-                # print(msg) # <--- debug
-                msg = msg.split(' ')
+                while not (opponent_escaped or opponent_dead):
+                    msg = conn.recv(1024).decode()
+                    # print(msg) # <--- debug
+                    msg = msg.split(' ')
 
-                for i in range(len(msg)):
-                    if msg[i] == MSG_POS:
-                        dungeon.p2 = int(msg[i+1]), int(msg[i+2])
-                    elif msg[i] == MSG_ESC:
-                        opponent_escaped = True  # First player got out
-                        opponent_gold = int(msg[i+1])
+                    for i in range(len(msg)):
+                        if msg[i] == MSG_POS:
+                            dungeon.p2 = int(msg[i+1]), int(msg[i+2])
+                        elif msg[i] == MSG_ESC:
+                            opponent_escaped = True  # First player got out
+                            opponent_gold = int(msg[i+1])
+                            break
+                        elif msg[i] == MSG_DIE:
+                            opponent_dead = True
+                            dungeon.p2 = None
+                            conn.close()
+                            multi = False
+                            break
+                        elif msg[i] == MSG_CLR:
+                            dungeon.set((int(msg[i+1]), int(msg[i+2])), RM_EMPTY)
+                            break
+
+                    # Keep receiving if you are waiting the opponent and said opponent didn't die yet.
+                    # All I wanted was a DO - WHILE.
+                    if not wait_opponent:
                         break
-                    elif msg[i] == MSG_DIE:
-                        opponent_dead = True
-                        dungeon.p2 = None
-                        conn.close()
-                        multi = False
-                        break
-                    elif msg[i] == MSG_CLR:
-                        dungeon.set((int(msg[i+1]), int(msg[i+2])), RM_EMPTY)
-                        break
 
-                # Keep receiving if you are waiting the opponent and said opponent didn't die yet.
-                # All I wanted was a DO - WHILE.
-                if not wait_opponent:
-                    break
+            except ConnectionAbortedError:
+                print("Connessione chiusa da parte dell'avversario")
+                multi = False
+                dungeon.p2 = None
+                conn.close()
 
         if not player.attacked(0):
             print("Sei morto.")
