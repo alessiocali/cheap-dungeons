@@ -1,5 +1,6 @@
 import random
 import socket as sck
+import math
 
 #####################################################################################################################
 #       IMPORTANT NOTE                                                                                              #
@@ -45,6 +46,8 @@ MSG_DIE = "DEAD"
 MSG_ESC = "ESCAPE"
 MSG_CLR = "CLEAR"
 MSG_POS = "POS"
+
+DIRECTIONS = ["Nord-Ovest", "Nord", "Nord-Est", "Est", "Sud-Est", "Sud", "Sud-Ovest"]
 
 
 # Dungeon data
@@ -221,7 +224,7 @@ class DungeonGraph:
             knife = "Sì" if player_info.has_knife else "Nessuno"
             return "\tColtello: %s" % knife
         elif self.ui_counter == 5:
-            sword = "Sì" if player_info.has_lockpick else "Nessuna"
+            sword = "Sì" if player_info.has_sword else "Nessuna"
             return "\tSpada: %s" % sword
         elif self.ui_counter == 6:
             compass = "Sì" if player_info.has_compass else "Nessuna"
@@ -328,7 +331,7 @@ class Player:
     HP_MAX = 10
     COIN_MAX = 9999
     health = 10
-    coin = 0
+    coin = 10
     discovered = set([])
     has_lockpick = False
     has_knife = False
@@ -398,6 +401,18 @@ def move(curr_tile, socket, dungeon, player):
             ny = y + 1
         elif pl_input == '':
             print("Decidi di restare qui")
+        elif pl_input == "triforce":
+            player.has_compass = True
+            continue
+        elif pl_input == "greyskull":
+            player.has_sword = True
+            continue
+        elif pl_input == "thievesguild":
+            player.has_lockpick = True
+            continue
+        elif pl_input == "cutthroat":
+            player.has_knife = True
+            continue
         elif pl_input == "quit":
             if socket is not None:
                 socket.close()
@@ -511,6 +526,10 @@ def play():
     wait_opponent = False
     movs_to_esc = 0
     opponent_gold = -1
+    turnback = False
+
+    with open("quiz.txt") as quiz_file:
+        quizzes = [quiz.split('-') for quiz in quiz_file.readlines()]
 
     while not escaped:
         room, curr_tile, exit_found = update(curr_tile, player, dungeon)
@@ -522,18 +541,167 @@ def play():
             print("Le urla strazianti di un altro avventuriero giungono alle tue orecchie.")
             opponent_dead = False
 
+        if player.has_compass:
+            direction = "Ovest"
+            for i in range(6):
+                maxAng = math.pi * (7 - 2*i) / 8
+                minAng = math.pi * (5 - 2*i) / 8
+                ang = math.atan2(dungeon.p1[0] - dungeon.exit[0], dungeon.exit[1] - dungeon.p1[1])
+                if minAng < ang <= maxAng:
+                    direction = DIRECTIONS[i]
+            print("La bussola indica verso "+ direction)
+
         if dungeon.p1 == dungeon.p2:
+            turnback = True
             print("Di fronte a te si staglia uno sconosciuto...")
+            print("Cosa desideri fare?")
+            print("s- Saluta lo sconosciuto")
+            if player.has_sword:
+                print("a- Attacca lo sconosciuto")
+            if player.has_knife:
+                print("r- Deruba lo sconosciuto")
+            choice = input()
+            if choice == "s":
+                print("Cosa vuoi dire allo sconosciuto?")
+                msg = input()
+                conn.sendall(("S:" + msg).encode())
+                opp_choice = conn.recv(1024).decode().split(":", 1)
+                if opp_choice[0] == "S":
+                    print("Lo sconosciuto ti dice:")
+                    print(opp_choice[1])
+                elif opp_choice[0] == "A":
+                    print("Lo sconosciuto sguaina la spada.. Ma inciampa come una pera cotta")
+                elif opp_choice[0] == "R":
+                    print("Vieni derubato dallo sconosciuto!")
+                    coin_lost = int (player.coin * 0.25)
+                    player.coin -= coin_lost
+                    conn.sendall(str(coin_lost).encode())
+            elif choice == "a" and player.has_sword:
+                conn.sendall("A:".encode())
+                opp_choice = conn.recv(1024).decode().split(":", 1)
+                if opp_choice[0] == "S":
+                    print("Ti prepari ad attacare lo sconosciuto..")
+                    print("Ma il Karma punisce le tue cattive intenzioni")
+                    print("Inciampi e perdi parte del tuo bottino")
+                    player.coin = int(player.coin * 0.75)
+                elif opp_choice[0] == "A":
+                    print("Lo sconosciuto risponde all'attaco e rimani ferito")
+                    player.attacked(1)
+                elif opp_choice[0] == "R":
+                    print("Il tuo avversario intendeva derubarti ma tu riesci a respingerlo")
+            elif choice == "r" and player.has_knife:
+                conn.sendall("R:".encode())
+                opp_choice = conn.recv(1024).decode().split(":", 1)
+                if opp_choice[0] == "S":
+                    print("Riesci a derubare l'ignaro sconosciuto")
+                    player.coin += int(conn.recv(1024).decode())
+                elif opp_choice[0] == "A":
+                    print("L'avversario percepisce le tue intenzioni e ti attacca")
+                    player.attacked(2)
+                elif opp_choice[0] == "R":
+                    luck = random.randrange(1, 1000)
+                    conn.send(str(luck).encode())
+                    opp_luck = int(conn.recv(1024).decode())
+                    if luck < opp_luck:
+                        print("Vieni derubato dallo sconosciuto")
+                        coin_lost = int(player.coin * 0.25)
+                        player.coin -= coin_lost
+                        conn.sendall(str(coin_lost).encode())
+                    elif luck > opp_luck:
+                        print("Riesci a derubare lo sconosciuto")
+                        player.coin += int(conn.recv(1024).decode())
+                    else:
+                        print("Nella foga di derubarvi a vicenda non concludete nulla")
+            input("Decidi di tornare indietro... (premi un tasto)")
         elif room == RM_EMPTY:
             print("Ti immetti nel tetro corridoio...")
         elif room == RM_MNST:
             print("Un mostro orribile ti si para davanti!")
+            if player.has_sword:
+                print("Usando la tua spada riesci a distruggere il mostro!")
+            else:
+                player.attacked(1)
+                print("Riesci a sconfiggere il mostro, ma subisci dei danni")
+            dungeon.set(dungeon.p1, RM_EMPTY)
+            msg_queue.append(MSG_CLR + " " + str(dungeon.p1[0]) + " " + str(dungeon.p1[1]))
         elif room == RM_CHEST:
             print("Trovi una cassa del tesoro davanti a te!")
+            if player.has_lockpick:
+                print("Utilizzando il grimaldello riesci ad aprire la cassa")
+                coin_amount = random.randrange(10, 100)
+                player.coin += coin_amount
+                dungeon.set(dungeon.p1, RM_EMPTY)
+                msg_queue.append(MSG_CLR + " " + str(dungeon.p1[0]) + " " + str(dungeon.p1[1]))
+            else:
+                print("La cassa è chiusa e non riesci ad aprirla")
         elif room == RM_TRAP:
             print("Questa stanza contiene una trappola!")
+            if random.random()<0.5:
+                print("Ti accorgi della trappola e riesci ad evitarla")
+            else:
+                if player.has_knife:
+                    print("Riesci a disinnescare la trappola col tuo coltello")
+                elif random.random()<0.5:
+                    player.attacked(2)
+                    print("Una nube di gas velenoso ti avvolge")
+                else:
+                    player.coin = int (player.coin * 0.75)
+                    print("Il pavimento si apre sotto ai tuoi piedi.")
+                    print("Riesci a metterti in salvo ma parte del tuo bottino cade nel fosso")
+            dungeon.set(dungeon.p1, RM_EMPTY)
+            msg_queue.append(MSG_CLR + " " + str(dungeon.p1[0]) + " " + str(dungeon.p1[1]))
         elif room == RM_QUIZ:
             print("Sulla parete è riportata una misteriosa incisione...")
+            quiz = random.choice(quizzes)
+            print(quiz[0])
+            ans = input().lower()
+            if ans == quiz[1]:
+                print("Si apre un'alcova e trovi un tesoro")
+                player.coin += random.randrange(10, 100)
+            elif random.random() < 0.5:
+                player.attacked(2)
+                print("Una nube di gas velenoso ti avvolge")
+            else:
+                player.coin = int(player.coin * 0.75)
+                print("Il pavimento si apre sotto ai tuoi piedi.")
+                print("Riesci a metterti in salvo ma parte del tuo bottino cade nel fosso")
+            dungeon.set(dungeon.p1, RM_EMPTY)
+            msg_queue.append(MSG_CLR + " " + str(dungeon.p1[0]) + " " + str(dungeon.p1[1]))
+        elif room == RM_COMP:
+            print("Trovi una bussola in questa stanza")
+            if player.has_compass:
+                print("Ma ne hai già una..")
+            else:
+                player.has_compass = True
+                dungeon.place(dungeon.p1, RM_EMPTY)
+                msg_queue.set(MSG_CLR + " " + str(dungeon.p1[0]) + " " + str(dungeon.p1[1]))
+        elif room == RM_SWRD:
+            print("Trovi una spada in questa stanza")
+            if player.has_sword:
+                print("Ma ne hai già una..")
+            else:
+                player.has_sword = True
+                dungeon.set(dungeon.p1, RM_EMPTY)
+                msg_queue.append(MSG_CLR + " " + str(dungeon.p1[0]) + " " + str(dungeon.p1[1]))
+
+        elif room == RM_KNIFE:
+            print("Trovi un coltello in questa stanza")
+            if player.has_knife:
+                print("Ma ne hai già uno..")
+            else:
+                player.has_knife = True
+                dungeon.set(dungeon.p1, RM_EMPTY)
+                msg_queue.append(MSG_CLR + " " + str(dungeon.p1[0]) + " " + str(dungeon.p1[1]))
+
+        elif room == RM_LOCKP:
+            print("Trovi un grimaldello in questa stanza")
+            if player.has_lockpick:
+                print("Ma ne hai già uno..")
+            else:
+                player.has_lockpick = True
+                dungeon.set(dungeon.p1, RM_EMPTY)
+                msg_queue.append(MSG_CLR + " " + str(dungeon.p1[0]) + " " + str(dungeon.p1[1]))
+
         elif room == RM_EXIT:
             escaped = True
 
@@ -552,7 +720,11 @@ def play():
             if exit_found:
                 print("Vedi l'uscita di fronte a te!")
 
-            previous_tile, curr_tile = move(curr_tile, conn, dungeon, player)
+            if turnback:
+                turnback = False
+                curr_tile = previous_tile
+            else:
+                previous_tile, curr_tile = move(curr_tile, conn, dungeon, player)
             dungeon.p1 = curr_tile
 
             if opponent_escaped and (movs_to_esc < 10):  # Opponent got out, only 10 moves left
