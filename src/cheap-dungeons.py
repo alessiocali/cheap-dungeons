@@ -389,7 +389,7 @@ def move(curr_tile, socket, dungeon, player):
     global cheats_enabled
 
     while True:
-        print("Dove desideri andare?")
+        print("Dove desideri andare? (Tasti WASD per muoversi, 'quit' per uscire)")
 
         pl_input = input()
         x, y = curr_tile
@@ -431,7 +431,7 @@ def move(curr_tile, socket, dungeon, player):
                 continue
             elif pl_input == "seppuku":  # Cheat for suicide
                 player.attacked(player.health)
-            elif pl_input == "escaperod":  # Cheat for exit
+            elif pl_input == "escaperope":  # Cheat for exit
                 dungeon.set(dungeon.p1, RM_EXIT)
         else:
             print("Input non riconosciuto.")
