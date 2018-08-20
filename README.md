@@ -13,7 +13,3 @@ python cheap-dungeons.py
 You will need to have Python 3.x installed and on your PATH variable. Please be aware that currently the game language is in Italian as I had no prior plan of realeasing it. It will be pretty easy to translate though, and I'll upload an English version sooner or later.
 
 Other than that, you can fiddle with my code as you please. Comments, variables and methods are in English.
-
-## Code an analysis and feedback
-
-As with my other works, I'll eventually talk about this in my blog on game development. Please check it out for any feedback! You can find posts pertaining Cheap Dungeons here: http://g4f.altervista.org/tag/cheap-dungeons/
